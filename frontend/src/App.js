@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 
-const API = "https://moti-pro07.onrender.com/";
+const API = "https://moti-pro07.onrender.com";
 
 export default function App() {
   const [msg, setMsg] = useState("");
