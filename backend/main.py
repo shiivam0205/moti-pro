@@ -20,10 +20,14 @@ app.add_middleware(
 def chat(payload: dict):
     message = payload.get("message", "")
 
-    if not message:
-        return {"reply": "Please say something"}
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are MOTI, a helpful AI assistant."},
+            {"role": "user", "content": message}
+        ]
+    )
 
-    # SIMPLE AI LOGIC (temporary)
-    reply = f"MOTI: I heard '{message}'"
+    reply = response.choices[0].message.content
 
     return {"reply": reply}
