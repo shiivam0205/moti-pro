@@ -1,0 +1,27 @@
+body {
+  font-family: Arial;
+  background: #0a0a0a;
+  color: white;
+}
+
+.auth, .chat-container {
+  width: 400px;
+  margin: 60px auto;
+  padding: 20px;
+  background: #111;
+  border-radius: 12px;
+}
+
+input {
+  width: 100%;
+  padding: 10px;
+  margin: 5px 0;
+}
+
+button {
+  width: 100%;
+  padding: 10px;
+  background: #2563eb;
+  color: white;
+  border: none;
+}
