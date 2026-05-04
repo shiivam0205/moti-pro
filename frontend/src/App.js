@@ -32,13 +32,20 @@ export default function App() {
   // =========================
   // 📩 SEND MESSAGE
   // =========================
-  const send = async (inputMsg) => {
-    const messageToSend = inputMsg || msg;
-    if (!messageToSend) return;
-
+ const sendMessage = async () => {
+  try {
     const res = await axios.post(`${API}/chat`, {
-      message: messageToSend,
+      message: input
     });
+
+    console.log(res.data);
+
+    setChat([...chat, { user: input, bot: res.data.reply }]);
+    setInput("");
+  } catch (error) {
+    console.log(error);
+  }
+};
 
     const reply = res.data.response;
 

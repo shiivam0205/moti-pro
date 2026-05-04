@@ -24,4 +24,4 @@ def home():
 @app.post("/chat")
 def chat(payload: dict):
     message = payload.get("message", "")
-    return {"reply": f"You said: {message}"}
+    return {"reply": "Hello from MOTI AI"}
