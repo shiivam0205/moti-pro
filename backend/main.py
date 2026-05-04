@@ -1,5 +1,9 @@
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+app = FastAPI()
+
+# CORS FIX
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -10,3 +14,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# TEST ROUTE
+@app.get("/")
+def home():
+    return {"status": "MOTI AI running"}
+
+# CHAT ROUTE (THIS WAS MISSING)
+@app.post("/chat")
+def chat(payload: dict):
+    message = payload.get("message", "")
+    return {"reply": f"You said: {message}"}
