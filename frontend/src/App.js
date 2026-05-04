@@ -1,143 +1,72 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import axios from "axios";
 
-const API = "https://moti-pro07.onrender.com";
-
-export default function App() {
-  const [msg, setMsg] = useState("");
+function App() {
+  const [input, setInput] = useState("");
   const [chat, setChat] = useState([]);
 
-  // =========================
-  // 🎤 MANUAL VOICE INPUT
-  // =========================
-  const startVoice = () => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
+  // IMPORTANT: no trailing slash
+  const API = "https://moti-pro07.onrender.com";
 
-    if (!SpeechRecognition) {
-      alert("Voice not supported in this browser (use Chrome)");
-      return;
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+
+    try {
+      // add user message first
+      const userMessage = input;
+
+      setChat((prev) => [
+        ...prev,
+        { user: userMessage, bot: "..." }
+      ]);
+
+      setInput("");
+
+      // API call
+      const res = await axios.post(`${API}/chat`, {
+        message: userMessage
+      });
+
+      console.log("Backend response:", res.data);
+
+      const botReply = res.data.reply || "No response";
+
+      // update last bot message
+      setChat((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          user: userMessage,
+          bot: botReply
+        };
+        return updated;
+      });
+
+    } catch (error) {
+      console.log("Error:", error);
+
+      setChat((prev) => [
+        ...prev,
+        { user: input, bot: "Error connecting to server" }
+      ]);
     }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-    recognition.start();
-
-    recognition.onresult = (event) => {
-      const text = event.results[0][0].transcript;
-      setMsg(text);
-    };
   };
 
-  // =========================
-  // 📩 SEND MESSAGE
-  // =========================
- const sendMessage = async () => {
-  try {
-    const res = await axios.post(`${API}/chat`, {
-      message: input
-    });
-
-    console.log(res.data);
-
-    setChat([...chat, { user: input, bot: res.data.reply }]);
-    setInput("");
-  } catch (error) {
-    console.log(error);
-  }
-};
-
-    const reply = res.data.response;
-
-    setChat((prev) => [
-      ...prev,
-      { user: messageToSend, bot: reply },
-    ]);
-
-    setMsg("");
-
-    // 🔊 AI SPEAKS RESPONSE
-    const speech = new SpeechSynthesisUtterance(reply);
-    speech.lang = "en-US";
-    window.speechSynthesis.speak(speech);
-  };
-
-  // =========================
-  // 🎯 COMMAND LISTENER (WAKE WORD FLOW)
-  // =========================
-  const listenCommand = () => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-
-    recognition.start();
-
-    recognition.onresult = (event) => {
-      const command = event.results[0][0].transcript;
-
-      send(command);
-    };
-  };
-
-  // =========================
-  // 🎤 CONTINUOUS WAKE WORD ENGINE
-  // =========================
-  const startWakeWord = () => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (!SpeechRecognition) return;
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.lang = "en-US";
-
-    recognition.onresult = (event) => {
-      const text =
-        event.results[event.results.length - 1][0].transcript.toLowerCase();
-
-      console.log("Heard:", text);
-
-      // 🎯 WAKE WORD DETECTION
-      if (text.includes("hey moti")) {
-        const speech = new SpeechSynthesisUtterance("Yes, I'm listening");
-        window.speechSynthesis.speak(speech);
-
-        listenCommand();
-      }
-    };
-
-    recognition.start();
-  };
-
-  // =========================
-  // 🚀 AUTO START WAKE WORD
-  // =========================
-  useEffect(() => {
-    startWakeWord();
-  }, []);
-
-  // =========================
-  // 🔥 UI (RETURN SECTION)
-  // =========================
   return (
-    <div
-      style={{
-        background: "#0a0a0a",
-        color: "white",
-        minHeight: "100vh",
-        padding: 20,
-        fontFamily: "Arial",
-      }}
-    >
-      <h1>MOTI VOICE AI 🎤</h1>
+    <div style={{ padding: "20px", fontFamily: "Arial" }}>
+      <h2>MOTI AI Chat</h2>
 
       {/* CHAT BOX */}
-      <div style={{ marginBottom: 20 }}>
+      <div
+        style={{
+          border: "1px solid #ccc",
+          height: "400px",
+          overflowY: "auto",
+          padding: "10px",
+          marginBottom: "10px"
+        }}
+      >
         {chat.map((c, i) => (
-          <div key={i} style={{ marginBottom: 10 }}>
+          <div key={i} style={{ marginBottom: "10px" }}>
             <p><b>You:</b> {c.user}</p>
             <p><b>MOTI:</b> {c.bot}</p>
             <hr />
@@ -147,20 +76,17 @@ export default function App() {
 
       {/* INPUT */}
       <input
-        value={msg}
-        onChange={(e) => setMsg(e.target.value)}
-        placeholder="Type or say 'Hey MOTI'..."
-        style={{ padding: 10, width: "60%" }}
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder="Type message..."
+        style={{ width: "70%", padding: "10px" }}
       />
 
-      {/* BUTTONS */}
-      <button onClick={() => send()} style={{ padding: 10, marginLeft: 10 }}>
+      <button onClick={sendMessage} style={{ padding: "10px" }}>
         Send
-      </button>
-
-      <button onClick={startVoice} style={{ padding: 10, marginLeft: 10 }}>
-        🎤 Speak
       </button>
     </div>
   );
 }
+
+export default App;

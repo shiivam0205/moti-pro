@@ -16,12 +16,14 @@ app.add_middleware(
 )
 
 # TEST ROUTE
-@app.get("/")
-def home():
-    return {"status": "MOTI AI running"}
-
-# CHAT ROUTE (THIS WAS MISSING)
 @app.post("/chat")
 def chat(payload: dict):
     message = payload.get("message", "")
-    return {"reply": "Hello from MOTI AI"}
+
+    if not message:
+        return {"reply": "Please say something"}
+
+    # SIMPLE AI LOGIC (temporary)
+    reply = f"MOTI: I heard '{message}'"
+
+    return {"reply": reply}
