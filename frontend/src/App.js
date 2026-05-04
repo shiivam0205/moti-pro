@@ -5,86 +5,62 @@ function App() {
   const [input, setInput] = useState("");
   const [chat, setChat] = useState([]);
 
-  // IMPORTANT: no trailing slash
   const API = "https://moti-pro07.onrender.com";
 
   const sendMessage = async () => {
-    if (!input.trim()) return;
+    if (!input) return;
+
+    const userText = input;
+
+    // show user instantly
+    setChat([...chat, { user: userText, bot: "..." }]);
+
+    setInput("");
 
     try {
-      // add user message first
-      const userMessage = input;
-
-      setChat((prev) => [
-        ...prev,
-        { user: userMessage, bot: "..." }
-      ]);
-
-      setInput("");
-
-      // API call
       const res = await axios.post(`${API}/chat`, {
-        message: userMessage
+        message: userText
       });
 
-      console.log("Backend response:", res.data);
+      const reply = res.data.reply;
 
-      const botReply = res.data.reply || "No response";
-
-      // update last bot message
+      // update last message
       setChat((prev) => {
         const updated = [...prev];
-        updated[updated.length - 1] = {
-          user: userMessage,
-          bot: botReply
-        };
+        updated[updated.length - 1].bot = reply;
         return updated;
       });
 
-    } catch (error) {
-      console.log("Error:", error);
-
-      setChat((prev) => [
-        ...prev,
-        { user: input, bot: "Error connecting to server" }
-      ]);
+    } catch (err) {
+      setChat((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1].bot = "Error connecting";
+        return updated;
+      });
     }
   };
 
   return (
-    <div style={{ padding: "20px", fontFamily: "Arial" }}>
-      <h2>MOTI AI Chat</h2>
+    <div style={{ padding: 20 }}>
+      <h2>MOTI AI</h2>
 
-      {/* CHAT BOX */}
-      <div
-        style={{
-          border: "1px solid #ccc",
-          height: "400px",
-          overflowY: "auto",
-          padding: "10px",
-          marginBottom: "10px"
-        }}
-      >
+      <div style={{ minHeight: 300, border: "1px solid black", padding: 10 }}>
         {chat.map((c, i) => (
-          <div key={i} style={{ marginBottom: "10px" }}>
+          <div key={i}>
             <p><b>You:</b> {c.user}</p>
-            <p><b>MOTI:</b> {c.bot}</p>
+            <p><b>Bot:</b> {c.bot}</p>
             <hr />
           </div>
         ))}
       </div>
 
-      {/* INPUT */}
       <input
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        placeholder="Type message..."
-        style={{ width: "70%", padding: "10px" }}
+        placeholder="Type..."
       />
 
-      <button onClick={sendMessage} style={{ padding: "10px" }}>
-        Send
-      </button>
+      <button onClick={sendMessage}>Send</button>
     </div>
   );
 }
