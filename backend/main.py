@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
+from pydantic import BaseModel
 import os
 
 app = FastAPI()
@@ -14,21 +15,20 @@ app.add_middleware(
 )
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
 conversation_history = [
     {
         "role": "system",
-        "content": "You are MOTI, a smart friendly female AI assistant. Remember previous conversation and reply naturally."
+        "content": "You are MOTI, a smart friendly female AI assistant. Remember recent conversation and reply naturally."
     }
 ]
+
+class ChatRequest(BaseModel):
+    message: str
 
 @app.get("/")
 def home():
     return {"status": "MOTI AI running"}
-
-from pydantic import BaseModel
-
-class ChatRequest(BaseModel):
-    message: str
 
 @app.post("/chat")
 def chat(payload: ChatRequest):
@@ -43,14 +43,14 @@ def chat(payload: ChatRequest):
             "content": message
         })
 
-        # keep only last few chats to save Groq tokens
         if len(conversation_history) > 8:
             conversation_history[:] = [conversation_history[0]] + conversation_history[-7:]
 
-       response = client.chat.completions.create(
-    model="llama-3.1-8b-instant",
-    messages=conversation_history
-)
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=conversation_history
+        )
+
         reply = response.choices[0].message.content
 
         conversation_history.append({
