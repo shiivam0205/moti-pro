@@ -8,7 +8,6 @@ import uuid
 
 app = FastAPI()
 
-# ---------------- CORS ----------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,7 +19,7 @@ app.add_middleware(
 # ---------------- GROQ ----------------
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# ---------------- DATABASE ----------------
+# ---------------- DB ----------------
 conn = sqlite3.connect("moti.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -61,15 +60,9 @@ def home():
 @app.post("/login")
 def login(data: LoginRequest):
     try:
-        username = data.username.strip()
-        password = data.password.strip()
-
-        if not username or not password:
-            return {"error": "Username and password required"}
-
         cursor.execute(
             "SELECT user_id FROM users WHERE username=? AND password=?",
-            (username, password)
+            (data.username, data.password)
         )
 
         user = cursor.fetchone()
@@ -81,8 +74,9 @@ def login(data: LoginRequest):
 
         cursor.execute(
             "INSERT INTO users VALUES (?, ?, ?)",
-            (user_id, username, password)
+            (user_id, data.username, data.password)
         )
+
         conn.commit()
 
         return {"user_id": user_id}
@@ -90,39 +84,24 @@ def login(data: LoginRequest):
     except Exception as e:
         return {"error": str(e)}
 
-# ---------------- SAVE CHAT ----------------
-def save_chat(user_id, role, message):
-    cursor.execute(
-        "INSERT INTO chats (user_id, role, message) VALUES (?, ?, ?)",
-        (user_id, role, message)
-    )
-    conn.commit()
-
-# ---------------- HISTORY ----------------
-@app.get("/history/{user_id}")
-def history(user_id: str):
-    cursor.execute(
-        "SELECT role, message FROM chats WHERE user_id=? ORDER BY id",
-        (user_id,)
-    )
-
-    rows = cursor.fetchall()
-    return {"history": rows}
-
 # ---------------- CHAT ----------------
 @app.post("/chat")
 def chat(payload: ChatRequest):
     try:
+        message = payload.message.strip()
         user_id = payload.user_id
-        message = payload.message
 
         if not message:
             return {"reply": "Please type something"}
 
-        save_chat(user_id, "user", message)
+        cursor.execute(
+            "INSERT INTO chats (user_id, role, message) VALUES (?, ?, ?)",
+            (user_id, "user", message)
+        )
+        conn.commit()
 
         cursor.execute(
-            "SELECT role, message FROM chats WHERE user_id=? ORDER BY id DESC LIMIT 12",
+            "SELECT role, message FROM chats WHERE user_id=? ORDER BY id DESC LIMIT 10",
             (user_id,)
         )
 
@@ -131,7 +110,7 @@ def chat(payload: ChatRequest):
         messages = [
             {
                 "role": "system",
-                "content": "You are MOTI AI assistant. Be helpful and friendly."
+                "content": "You are MOTI AI assistant. Be helpful, short and friendly."
             }
         ]
 
@@ -145,9 +124,13 @@ def chat(payload: ChatRequest):
 
         reply = response.choices[0].message.content
 
-        save_chat(user_id, "assistant", reply)
+        cursor.execute(
+            "INSERT INTO chats (user_id, role, message) VALUES (?, ?, ?)",
+            (user_id, "assistant", reply)
+        )
+        conn.commit()
 
         return {"reply": reply}
 
     except Exception as e:
-        return {"reply": f"AI error: {str(e)}"}
+        return {"reply": f"Server error: {str(e)}"}
