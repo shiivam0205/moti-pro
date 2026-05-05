@@ -1,13 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from groq import Groq
 from pydantic import BaseModel
-import os
+from groq import Groq
 import sqlite3
+import os
 import uuid
 
 app = FastAPI()
 
+# ---------------- CORS ----------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,8 +17,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ---------------- GROQ ----------------
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
+# ---------------- DATABASE ----------------
 conn = sqlite3.connect("moti.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -40,6 +43,7 @@ CREATE TABLE IF NOT EXISTS chats (
 
 conn.commit()
 
+# ---------------- MODELS ----------------
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -48,27 +52,45 @@ class ChatRequest(BaseModel):
     user_id: str
     message: str
 
+# ---------------- HOME ----------------
+@app.get("/")
+def home():
+    return {"status": "MOTI AI running"}
+
+# ---------------- LOGIN ----------------
 @app.post("/login")
 def login(data: LoginRequest):
-    cursor.execute(
-        "SELECT user_id FROM users WHERE username=? AND password=?",
-        (data.username, data.password)
-    )
-    user = cursor.fetchone()
+    try:
+        username = data.username.strip()
+        password = data.password.strip()
 
-    if user:
-        return {"user_id": user[0]}
+        if not username or not password:
+            return {"error": "Username and password required"}
 
-    user_id = str(uuid.uuid4())
+        cursor.execute(
+            "SELECT user_id FROM users WHERE username=? AND password=?",
+            (username, password)
+        )
 
-    cursor.execute(
-        "INSERT INTO users VALUES (?, ?, ?)",
-        (user_id, data.username, data.password)
-    )
-    conn.commit()
+        user = cursor.fetchone()
 
-    return {"user_id": user_id}
+        if user:
+            return {"user_id": user[0]}
 
+        user_id = str(uuid.uuid4())
+
+        cursor.execute(
+            "INSERT INTO users VALUES (?, ?, ?)",
+            (user_id, username, password)
+        )
+        conn.commit()
+
+        return {"user_id": user_id}
+
+    except Exception as e:
+        return {"error": str(e)}
+
+# ---------------- SAVE CHAT ----------------
 def save_chat(user_id, role, message):
     cursor.execute(
         "INSERT INTO chats (user_id, role, message) VALUES (?, ?, ?)",
@@ -76,27 +98,41 @@ def save_chat(user_id, role, message):
     )
     conn.commit()
 
-@app.get("/")
-def home():
-    return {"status": "MOTI AI running"}
+# ---------------- HISTORY ----------------
+@app.get("/history/{user_id}")
+def history(user_id: str):
+    cursor.execute(
+        "SELECT role, message FROM chats WHERE user_id=? ORDER BY id",
+        (user_id,)
+    )
 
+    rows = cursor.fetchall()
+    return {"history": rows}
+
+# ---------------- CHAT ----------------
 @app.post("/chat")
 def chat(payload: ChatRequest):
     try:
         user_id = payload.user_id
         message = payload.message
 
+        if not message:
+            return {"reply": "Please type something"}
+
         save_chat(user_id, "user", message)
 
         cursor.execute(
-            "SELECT role, message FROM chats WHERE user_id=? ORDER BY id DESC LIMIT 10",
+            "SELECT role, message FROM chats WHERE user_id=? ORDER BY id DESC LIMIT 12",
             (user_id,)
         )
 
         rows = cursor.fetchall()[::-1]
 
         messages = [
-            {"role": "system", "content": "You are MOTI AI assistant."}
+            {
+                "role": "system",
+                "content": "You are MOTI AI assistant. Be helpful and friendly."
+            }
         ]
 
         for r in rows:
@@ -114,4 +150,4 @@ def chat(payload: ChatRequest):
         return {"reply": reply}
 
     except Exception as e:
-        return {"reply": str(e)}
+        return {"reply": f"AI error: {str(e)}"}
