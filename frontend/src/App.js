@@ -8,12 +8,23 @@ function App() {
   const API = "https://moti-pro07.onrender.com";
 
   const speakText = (text) => {
-    const speech = new SpeechSynthesisUtterance(text);
-    speech.lang = "en-US";
-    speech.rate = 1;
-    speech.pitch = 1;
-    window.speechSynthesis.speak(speech);
-  };
+  const speech = new SpeechSynthesisUtterance(text);
+  const voices = window.speechSynthesis.getVoices();
+
+  const femaleVoice =
+    voices.find(v => v.name.includes("Female")) ||
+    voices.find(v => v.name.includes("Samantha")) ||
+    voices.find(v => v.name.includes("Google US English")) ||
+    voices.find(v => v.name.includes("Zira")) ||
+    voices[0];
+
+  speech.voice = femaleVoice;
+  speech.lang = "en-US";
+  speech.rate = 0.95;
+  speech.pitch = 1.2;
+
+  window.speechSynthesis.speak(speech);
+};
 
   const startListening = () => {
     const SpeechRecognition =
