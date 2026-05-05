@@ -1,175 +1,145 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 function App() {
-  const [input, setInput] = useState("");
-  const [chat, setChat] = useState([]);
-  const [status, setStatus] = useState("Idle");
-
   const API = "https://moti-pro07.onrender.com";
 
-  const userId = localStorage.getItem("moti_user") || Date.now().toString();
-  localStorage.setItem("moti_user", userId);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
 
-  const speakText = (text) => {
-    window.speechSynthesis.cancel();
+  const [userId, setUserId] = useState(localStorage.getItem("user_id") || "");
+  const [loggedIn, setLoggedIn] = useState(false);
 
-    const speech = new SpeechSynthesisUtterance(text);
-    const voices = window.speechSynthesis.getVoices();
+  const [input, setInput] = useState("");
+  const [chat, setChat] = useState([]);
 
-    const isHindi =
-      /[ऀ-ॿ]/.test(text) ||
-      /namaste|kya|haan|nahi|aap|tum|kaise|mera|mai|main|hum/i.test(text);
-
-    let selectedVoice;
-
-    if (isHindi) {
-      selectedVoice =
-        voices.find((v) => v.lang === "hi-IN") ||
-        voices.find((v) => v.name.toLowerCase().includes("hindi")) ||
-        voices[0];
-
-      speech.lang = "hi-IN";
-      speech.rate = 0.92;
-      speech.pitch = 1;
-    } else {
-      selectedVoice =
-        voices.find((v) => v.name.includes("Female")) ||
-        voices.find((v) => v.name.includes("Samantha")) ||
-        voices.find((v) => v.name.includes("Google US English")) ||
-        voices.find((v) => v.name.includes("Zira")) ||
-        voices[0];
-
-      speech.lang = "en-US";
-      speech.rate = 0.95;
-      speech.pitch = 1.2;
+  useEffect(() => {
+    if (userId) {
+      setLoggedIn(true);
+      loadHistory(userId);
     }
+  }, []);
 
-    speech.voice = selectedVoice;
+  const login = async () => {
+    try {
+      const res = await axios.post(`${API}/login`, {
+        username,
+        password,
+      });
 
-    speech.onstart = () => setStatus("Speaking...");
-    speech.onend = () => setStatus("Idle");
+      localStorage.setItem("user_id", res.data.user_id);
+      setUserId(res.data.user_id);
+      setLoggedIn(true);
 
-    window.speechSynthesis.speak(speech);
+      loadHistory(res.data.user_id);
+    } catch (err) {
+      alert("Login error");
+    }
   };
 
-  const sendToAI = async (text) => {
-    if (!text.trim()) return;
+  const loadHistory = async (uid) => {
+    try {
+      const res = await axios.get(`${API}/history/${uid}`);
+
+      const formatted = res.data.history.map((h) => ({
+        role: h[0] === "assistant" ? "bot" : "user",
+        text: h[1],
+      }));
+
+      setChat(formatted);
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+
+    const text = input;
+    setInput("");
 
     setChat((prev) => [...prev, { role: "user", text }]);
     setChat((prev) => [...prev, { role: "bot", text: "..." }]);
-    setStatus("Thinking...");
 
     try {
       const res = await axios.post(`${API}/chat`, {
-        message: text,
         user_id: userId,
+        message: text,
       });
 
       const reply = res.data.reply;
 
-      setTimeout(() => {
-        speakText(reply);
-
-        setChat((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: "bot", text: reply };
-          return updated;
-        });
-      }, 1200);
+      setChat((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { role: "bot", text: reply };
+        return updated;
+      });
     } catch (err) {
-      setStatus("Idle");
-
       setChat((prev) => {
         const updated = [...prev];
         updated[updated.length - 1] = {
           role: "bot",
-          text: "⚠️ " + (err.response?.data?.detail || err.message),
+          text: "⚠️ Server error",
         };
         return updated;
       });
     }
   };
 
-  const startListening = () => {
-    window.speechSynthesis.cancel();
+  if (!loggedIn) {
+    return (
+      <div style={styles.loginPage}>
+        <h2>MOTI AI Login</h2>
 
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
+        <input
+          placeholder="Username"
+          style={styles.input}
+          onChange={(e) => setUsername(e.target.value)}
+        />
 
-    if (!SpeechRecognition) {
-      alert("Speech Recognition not supported");
-      return;
-    }
+        <input
+          placeholder="Password"
+          type="password"
+          style={styles.input}
+          onChange={(e) => setPassword(e.target.value)}
+        />
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = "hi-IN";
-    recognition.start();
-    setStatus("Listening...");
-
-    recognition.onresult = (event) => {
-      const voiceText = event.results[0][0].transcript;
-      setInput("");
-      sendToAI(voiceText);
-    };
-
-    recognition.onerror = () => {
-      setStatus("Idle");
-    };
-  };
-
-  const sendMessage = () => {
-    const text = input;
-    setInput("");
-    sendToAI(text);
-  };
+        <button style={styles.button} onClick={login}>
+          Login / Signup
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.page}>
-      <div style={styles.glow1}></div>
-      <div style={styles.glow2}></div>
+      <h2 style={styles.title}>MOTI AI</h2>
 
-      <div
-        style={{
-          ...styles.orb,
-          ...(status === "Listening..." && styles.listeningOrb),
-          ...(status === "Thinking..." && styles.thinkingOrb),
-          ...(status === "Speaking..." && styles.speakingOrb),
-        }}
-      ></div>
-
-      <div style={styles.title}>MOTI AI</div>
-      <div style={styles.status}>{status}</div>
-
-      <div style={styles.chatContainer}>
+      <div style={styles.chatBox}>
         {chat.map((msg, i) => (
           <div
             key={i}
-            style={msg.role === "user" ? styles.userBubble : styles.botBubble}
+            style={
+              msg.role === "user"
+                ? styles.userBubble
+                : styles.botBubble
+            }
           >
-            {msg.text === "..." ? (
-              <span style={{ fontSize: "28px", letterSpacing: "6px" }}>● ● ●</span>
-            ) : (
-              msg.text
-            )}
+            {msg.text}
           </div>
         ))}
       </div>
 
-      <div style={styles.inputArea}>
+      <div style={styles.inputRow}>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Talk or type..."
-          style={styles.input}
+          style={styles.chatInput}
+          placeholder="Type message..."
         />
 
-        <button onClick={startListening} style={styles.micButton}>
-          🎙
-        </button>
-
-        <button onClick={sendMessage} style={styles.sendButton}>
-          ➤
+        <button style={styles.sendBtn} onClick={sendMessage}>
+          Send
         </button>
       </div>
     </div>
@@ -177,158 +147,69 @@ function App() {
 }
 
 const styles = {
-  page: {
-    minHeight: "100vh",
-    background: "linear-gradient(160deg,#050816,#0b1026,#111827)",
+  loginPage: {
+    height: "100vh",
     display: "flex",
     flexDirection: "column",
+    justifyContent: "center",
     alignItems: "center",
+    gap: 10,
+  },
+
+  page: {
     padding: 20,
-    overflow: "hidden",
-    fontFamily: "Segoe UI",
-    color: "white",
-    position: "relative",
-  },
-
-  glow1: {
-    position: "absolute",
-    width: 300,
-    height: 300,
-    borderRadius: "50%",
-    background: "#00e5ff33",
-    top: -50,
-    left: -50,
-    filter: "blur(80px)",
-  },
-
-  glow2: {
-    position: "absolute",
-    width: 250,
-    height: 250,
-    borderRadius: "50%",
-    background: "#7c4dff33",
-    bottom: -50,
-    right: -50,
-    filter: "blur(80px)",
-  },
-
-  orb: {
-    width: 100,
-    height: 100,
-    borderRadius: "50%",
-    marginTop: 10,
-    background: "radial-gradient(circle,#00e5ff,#1565c0,#0d47a1)",
-    boxShadow: "0 0 50px #00e5ff",
-    transition: "0.4s",
-  },
-
-  listeningOrb: {
-    boxShadow: "0 0 70px #ff9800",
-    background: "radial-gradient(circle,#ffb74d,#ef6c00,#e65100)",
-    transform: "scale(1.08)",
-  },
-
-  thinkingOrb: {
-    boxShadow: "0 0 70px #b388ff",
-    background: "radial-gradient(circle,#b388ff,#7c4dff,#512da8)",
-    transform: "scale(1.08)",
-  },
-
-  speakingOrb: {
-    boxShadow: "0 0 70px #00e676",
-    background: "radial-gradient(circle,#69f0ae,#00c853,#1b5e20)",
-    transform: "scale(1.08)",
+    fontFamily: "Arial",
   },
 
   title: {
-    marginTop: 12,
-    fontSize: 28,
-    fontWeight: "700",
-    letterSpacing: 3,
+    textAlign: "center",
   },
 
-  status: {
-    marginTop: 6,
-    marginBottom: 15,
-    color: "#9be7ff",
-    fontSize: 14,
-  },
-
-  chatContainer: {
-    flex: 1,
-    width: "100%",
-    maxWidth: 760,
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    backdropFilter: "blur(18px)",
-    borderRadius: 24,
-    padding: 20,
+  chatBox: {
+    height: "70vh",
     overflowY: "auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: 14,
-    boxShadow: "0 10px 40px rgba(0,0,0,0.35)",
-    zIndex: 2,
+    border: "1px solid #ccc",
+    padding: 10,
+    marginBottom: 10,
   },
 
   userBubble: {
-    alignSelf: "flex-end",
-    background: "linear-gradient(135deg,#00bcd4,#00838f)",
-    padding: "13px 18px",
-    borderRadius: "22px 22px 4px 22px",
-    maxWidth: "75%",
-    fontSize: 15,
+    textAlign: "right",
+    background: "#daf1ff",
+    padding: 8,
+    margin: 5,
+    borderRadius: 10,
   },
 
   botBubble: {
-    alignSelf: "flex-start",
-    background: "rgba(255,255,255,0.10)",
-    padding: "13px 18px",
-    borderRadius: "22px 22px 22px 4px",
-    maxWidth: "75%",
-    fontSize: 15,
+    textAlign: "left",
+    background: "#eee",
+    padding: 8,
+    margin: 5,
+    borderRadius: 10,
   },
 
-  inputArea: {
-    width: "100%",
-    maxWidth: 760,
+  inputRow: {
     display: "flex",
-    gap: 12,
-    marginTop: 16,
-    zIndex: 2,
+    gap: 10,
+  },
+
+  chatInput: {
+    flex: 1,
+    padding: 10,
+  },
+
+  sendBtn: {
+    padding: "10px 20px",
   },
 
   input: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 35,
-    border: "1px solid rgba(255,255,255,0.08)",
-    outline: "none",
-    background: "rgba(255,255,255,0.08)",
-    color: "white",
-    fontSize: 15,
+    padding: 10,
+    width: 200,
   },
 
-  micButton: {
-    width: 58,
-    height: 58,
-    borderRadius: "50%",
-    border: "none",
-    background: "linear-gradient(135deg,#ff9800,#ef6c00)",
-    color: "white",
-    fontSize: 22,
-    cursor: "pointer",
-  },
-
-  sendButton: {
-    width: 58,
-    height: 58,
-    borderRadius: "50%",
-    border: "none",
-    background: "linear-gradient(135deg,#00e676,#00c853)",
-    color: "white",
-    fontSize: 22,
-    cursor: "pointer",
+  button: {
+    padding: 10,
   },
 };
 

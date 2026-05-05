@@ -4,6 +4,7 @@ from groq import Groq
 from pydantic import BaseModel
 import os
 import sqlite3
+import uuid
 
 app = FastAPI()
 
@@ -17,78 +18,94 @@ app.add_middleware(
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# ---------------- DATABASE ----------------
 conn = sqlite3.connect("moti.db", check_same_thread=False)
 cursor = conn.cursor()
 
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS memory (
+CREATE TABLE IF NOT EXISTS users (
+    user_id TEXT PRIMARY KEY,
+    username TEXT,
+    password TEXT
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS chats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT,
-    type TEXT,
-    content TEXT
+    role TEXT,
+    message TEXT
 )
 """)
 
 conn.commit()
 
-# ---------------- REQUEST ----------------
-class ChatRequest(BaseModel):
-    message: str
-    user_id: str
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
-# ---------------- SAVE MEMORY ----------------
-def save_memory(user_id, content):
+class ChatRequest(BaseModel):
+    user_id: str
+    message: str
+
+@app.post("/login")
+def login(data: LoginRequest):
     cursor.execute(
-        "INSERT INTO memory (user_id, type, content) VALUES (?, ?, ?)",
-        (user_id, "fact", content)
+        "SELECT user_id FROM users WHERE username=? AND password=?",
+        (data.username, data.password)
+    )
+    user = cursor.fetchone()
+
+    if user:
+        return {"user_id": user[0]}
+
+    user_id = str(uuid.uuid4())
+
+    cursor.execute(
+        "INSERT INTO users VALUES (?, ?, ?)",
+        (user_id, data.username, data.password)
     )
     conn.commit()
 
-# ---------------- LOAD MEMORY ----------------
-def load_memory(user_id):
+    return {"user_id": user_id}
+
+def save_chat(user_id, role, message):
     cursor.execute(
-        "SELECT content FROM memory WHERE user_id = ?",
+        "INSERT INTO chats (user_id, role, message) VALUES (?, ?, ?)",
+        (user_id, role, message)
+    )
+    conn.commit()
+
+@app.get("/history/{user_id}")
+def history(user_id: str):
+    cursor.execute(
+        "SELECT role, message FROM chats WHERE user_id=? ORDER BY id",
         (user_id,)
     )
     rows = cursor.fetchall()
-    return [r[0] for r in rows]
-
-# ---------------- API ----------------
-@app.get("/")
-def home():
-    return {"status": "MOTI AI running"}
+    return {"history": rows}
 
 @app.post("/chat")
 def chat(payload: ChatRequest):
     try:
-        message = payload.message.strip()
         user_id = payload.user_id
+        message = payload.message
 
-        if message == "":
-            return {"reply": "Please type something."}
+        save_chat(user_id, "user", message)
 
-        lower = message.lower()
+        cursor.execute(
+            "SELECT role, message FROM chats WHERE user_id=? ORDER BY id DESC LIMIT 10",
+            (user_id,)
+        )
 
-        # detect personal info
-        if any(x in lower for x in ["my name is", "i am", "i like", "i love"]):
-            save_memory(user_id, message)
-
-        memory = load_memory(user_id)
-
-        memory_text = ""
-        if memory:
-            memory_text = "User memory: " + " | ".join(memory)
+        rows = cursor.fetchall()[::-1]
 
         messages = [
-            {
-                "role": "system",
-                "content": f"You are MOTI, a friendly AI assistant. Use user memory when needed. {memory_text}"
-            },
-            {
-                "role": "user",
-                "content": message
-            }
+            {"role": "system", "content": "You are MOTI AI assistant."}
         ]
+
+        for r in rows:
+            messages.append({"role": r[0], "content": r[1]})
 
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
@@ -97,8 +114,9 @@ def chat(payload: ChatRequest):
 
         reply = response.choices[0].message.content
 
+        save_chat(user_id, "assistant", reply)
+
         return {"reply": reply}
 
     except Exception as e:
-        print("ERROR:", str(e))
-        return {"reply": f"AI error: {str(e)}"}
+        return {"reply": str(e)}
