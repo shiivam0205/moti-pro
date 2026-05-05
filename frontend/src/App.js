@@ -17,17 +17,35 @@ function App() {
     const speech = new SpeechSynthesisUtterance(text);
     const voices = window.speechSynthesis.getVoices();
 
-    const femaleVoice =
-      voices.find((v) => v.name.includes("Female")) ||
-      voices.find((v) => v.name.includes("Samantha")) ||
-      voices.find((v) => v.name.includes("Google US English")) ||
-      voices.find((v) => v.name.includes("Zira")) ||
-      voices[0];
+    const isHindi =
+      /[ऀ-ॿ]/.test(text) ||
+      /namaste|kya|haan|nahi|aap|tum|kaise|mera|mai|main|hum/i.test(text);
 
-    speech.voice = femaleVoice;
-    speech.lang = "en-US";
-    speech.rate = 0.95;
-    speech.pitch = 1.2;
+    let selectedVoice;
+
+    if (isHindi) {
+      selectedVoice =
+        voices.find((v) => v.lang === "hi-IN") ||
+        voices.find((v) => v.name.toLowerCase().includes("hindi")) ||
+        voices[0];
+
+      speech.lang = "hi-IN";
+      speech.rate = 0.92;
+      speech.pitch = 1;
+    } else {
+      selectedVoice =
+        voices.find((v) => v.name.includes("Female")) ||
+        voices.find((v) => v.name.includes("Samantha")) ||
+        voices.find((v) => v.name.includes("Google US English")) ||
+        voices.find((v) => v.name.includes("Zira")) ||
+        voices[0];
+
+      speech.lang = "en-US";
+      speech.rate = 0.95;
+      speech.pitch = 1.2;
+    }
+
+    speech.voice = selectedVoice;
 
     speech.onstart = () => setStatus("Speaking...");
     speech.onend = () => setStatus("Idle");
@@ -85,7 +103,7 @@ function App() {
     }
 
     const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
+    recognition.lang = "hi-IN";
     recognition.start();
     setStatus("Listening...");
 
@@ -201,6 +219,7 @@ const styles = {
     marginTop: 10,
     background: "radial-gradient(circle,#00e5ff,#1565c0,#0d47a1)",
     boxShadow: "0 0 50px #00e5ff",
+    transition: "0.4s",
   },
 
   listeningOrb: {
