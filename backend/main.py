@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import os
+from groq import Groq
 
 app = FastAPI()
 
@@ -11,14 +13,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
-def home():
-    return {"status": "MOTI running"}
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 @app.post("/chat")
 def chat(payload: dict):
-    message = payload.get("message", "")
+    try:
+        message = payload.get("message", "")
 
-    return {
-        "reply": f"MOTI: I heard '{message}'"
-    }
+        if not message:
+            return {"reply": "Please send a message"}
+
+        response = client.chat.completions.create(
+            model="llama3-70b-8192",
+            messages=[
+                {"role": "system", "content": "You are MOTI, a smart AI assistant."},
+                {"role": "user", "content": message}
+            ]
+        )
+
+        reply = response.choices[0].message.content
+
+        return {"reply": reply}
+
+    except Exception as e:
+        print("ERROR:", e)
+        return {"reply": "AI error - check backend logs"}
