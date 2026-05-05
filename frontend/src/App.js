@@ -10,18 +10,18 @@ function App() {
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    const userText = input;
+    const text = input;
 
     setChat((prev) => [
       ...prev,
-      { user: userText, bot: "..." }
+      { user: text, bot: "..." }
     ]);
 
     setInput("");
 
     try {
       const res = await axios.post(`${API}/chat`, {
-        message: userText
+        message: text
       });
 
       const reply = res.data.reply;
@@ -42,116 +42,28 @@ function App() {
   };
 
   return (
-    <div style={styles.page}>
-      
-      {/* HEADER */}
-      <div style={styles.header}>
-        🤖 MOTI AI Assistant
-      </div>
+    <div style={{ padding: 20 }}>
+      <h2>MOTI Chat</h2>
 
-      {/* CHAT BOX */}
-      <div style={styles.chatBox}>
+      <div style={{ border: "1px solid black", height: 300, overflowY: "auto", padding: 10 }}>
         {chat.map((c, i) => (
-          <div key={i} style={styles.message}>
-            
-            <div style={styles.userMsg}>
-              👤 You: {c.user}
-            </div>
-
-            <div style={styles.botMsg}>
-              🤖 MOTI: {c.bot}
-            </div>
-
+          <div key={i}>
+            <p><b>You:</b> {c.user}</p>
+            <p><b>MOTI:</b> {c.bot}</p>
+            <hr />
           </div>
         ))}
       </div>
 
-      {/* INPUT AREA */}
-      <div style={styles.inputBox}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type your message..."
-          style={styles.input}
-        />
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder="Type..."
+      />
 
-        <button onClick={sendMessage} style={styles.button}>
-          Send
-        </button>
-      </div>
-
+      <button onClick={sendMessage}>Send</button>
     </div>
   );
 }
-
-const styles = {
-  page: {
-    fontFamily: "Arial",
-    minHeight: "100vh",
-    background: "linear-gradient(135deg, #e0f7fa, #e1bee7)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center"
-  },
-
-  header: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginTop: 20,
-    marginBottom: 10,
-    color: "#333"
-  },
-
-  chatBox: {
-    width: "90%",
-    maxWidth: 600,
-    height: 400,
-    overflowY: "auto",
-    background: "white",
-    borderRadius: 12,
-    padding: 15,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
-  },
-
-  message: {
-    marginBottom: 12
-  },
-
-  userMsg: {
-    textAlign: "right",
-    color: "#1a73e8",
-    marginBottom: 4
-  },
-
-  botMsg: {
-    textAlign: "left",
-    color: "#2e7d32"
-  },
-
-  inputBox: {
-    display: "flex",
-    marginTop: 15,
-    width: "90%",
-    maxWidth: 600,
-    gap: 10
-  },
-
-  input: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    border: "1px solid #ccc",
-    outline: "none"
-  },
-
-  button: {
-    padding: "12px 20px",
-    background: "#7b1fa2",
-    color: "white",
-    border: "none",
-    borderRadius: 8,
-    cursor: "pointer"
-  }
-};
 
 export default App;
