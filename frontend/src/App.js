@@ -7,24 +7,59 @@ function App() {
 
   const API = "https://moti-pro07.onrender.com";
 
-  const startListening = () => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
+ const startListening = () => {
+  const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
 
-    if (!SpeechRecognition) {
-      alert("Speech Recognition not supported in this browser");
-      return;
-    }
+  if (!SpeechRecognition) {
+    alert("Speech Recognition not supported");
+    return;
+  }
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-    recognition.start();
+  const recognition = new SpeechRecognition();
+  recognition.lang = "en-US";
+  recognition.start();
 
-    recognition.onresult = (event) => {
-      const voiceText = event.results[0][0].transcript;
-      setInput(voiceText);
-    };
+  recognition.onresult = async (event) => {
+    const voiceText = event.results[0][0].transcript;
+
+    setInput(voiceText);
+
+    // auto send voice message
+    setTimeout(async () => {
+      const text = voiceText;
+
+      setInput("");
+      setChat((prev) => [...prev, { role: "user", text }]);
+      setChat((prev) => [...prev, { role: "bot", text: "..." }]);
+
+      try {
+        const res = await axios.post(`${API}/chat`, {
+          message: text,
+        });
+
+        const reply = res.data.reply;
+
+        speakText(reply);
+
+        setChat((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: "bot", text: reply };
+          return updated;
+        });
+      } catch (err) {
+        setChat((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            role: "bot",
+            text: "⚠️ Server error",
+          };
+          return updated;
+        });
+      }
+    }, 500);
   };
+};
 const speakText = (text) => {
   const speech = new SpeechSynthesisUtterance(text);
   speech.lang = "en-US";
