@@ -7,8 +7,10 @@ function App() {
   const [status, setStatus] = useState("Idle");
 
   const API = "https://moti-pro07.onrender.com";
-const userId = localStorage.getItem("moti_user") || Date.now().toString();
-localStorage.setItem("moti_user", userId);
+
+  const userId = localStorage.getItem("moti_user") || Date.now().toString();
+  localStorage.setItem("moti_user", userId);
+
   const speakText = (text) => {
     window.speechSynthesis.cancel();
 
@@ -33,44 +35,44 @@ localStorage.setItem("moti_user", userId);
     window.speechSynthesis.speak(speech);
   };
 
- const sendToAI = async (text) => {
-  if (!text.trim()) return;
+  const sendToAI = async (text) => {
+    if (!text.trim()) return;
 
-  setChat((prev) => [...prev, { role: "user", text }]);
-  setChat((prev) => [...prev, { role: "bot", text: "..." }]);
-  setStatus("Thinking...");
+    setChat((prev) => [...prev, { role: "user", text }]);
+    setChat((prev) => [...prev, { role: "bot", text: "..." }]);
+    setStatus("Thinking...");
 
-  try {
-    const res = await axios.post(`${API}/chat`, {
-      message: text,
-      user_id: userId,
-    });
+    try {
+      const res = await axios.post(`${API}/chat`, {
+        message: text,
+        user_id: userId,
+      });
 
-    const reply = res.data.reply;
+      const reply = res.data.reply;
 
-    setTimeout(() => {
-      speakText(reply);
+      setTimeout(() => {
+        speakText(reply);
+
+        setChat((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: "bot", text: reply };
+          return updated;
+        });
+      }, 1200);
+    } catch (err) {
+      setStatus("Idle");
 
       setChat((prev) => {
         const updated = [...prev];
-        updated[updated.length - 1] = { role: "bot", text: reply };
+        updated[updated.length - 1] = {
+          role: "bot",
+          text: "⚠️ " + (err.response?.data?.detail || err.message),
+        };
         return updated;
       });
-    }, 1200);
+    }
+  };
 
-  } catch (err) {
-    setStatus("Idle");
-
-    setChat((prev) => {
-      const updated = [...prev];
-      updated[updated.length - 1] = {
-        role: "bot",
-        text: "⚠️ Server error",
-      };
-      return updated;
-    });
-  }
-};
   const startListening = () => {
     window.speechSynthesis.cancel();
 
@@ -93,7 +95,9 @@ localStorage.setItem("moti_user", userId);
       sendToAI(voiceText);
     };
 
-    recognition.onerror = () => setStatus("Idle");
+    recognition.onerror = () => {
+      setStatus("Idle");
+    };
   };
 
   const sendMessage = () => {
@@ -107,44 +111,32 @@ localStorage.setItem("moti_user", userId);
       <div style={styles.glow1}></div>
       <div style={styles.glow2}></div>
 
-     <div
-  style={{
-    ...styles.orb,
-    listeningOrb: {
-  boxShadow: "0 0 70px #ff9800",
-  background: "radial-gradient(circle,#ffb74d,#ef6c00,#e65100)",
-  transform: "scale(1.08)",
-typingDots: {
-  fontSize: 26,
-  letterSpacing: 4,
-},
+      <div
+        style={{
+          ...styles.orb,
+          ...(status === "Listening..." && styles.listeningOrb),
+          ...(status === "Thinking..." && styles.thinkingOrb),
+          ...(status === "Speaking..." && styles.speakingOrb),
+        }}
+      ></div>
 
-thinkingOrb: {
-  boxShadow: "0 0 70px #b388ff",
-  background: "radial-gradient(circle,#b388ff,#7c4dff,#512da8)",
-  transform: "scale(1.08)",
-},
-
-speakingOrb: {
-  boxShadow: "0 0 70px #00e676",
-  background: "radial-gradient(circle,#69f0ae,#00c853,#1b5e20)",
-  transform: "scale(1.08)",
-},
-></div>
+      <div style={styles.title}>MOTI AI</div>
+      <div style={styles.status}>{status}</div>
 
       <div style={styles.chatContainer}>
         {chat.map((msg, i) => (
-  <div
-    key={i}
-    style={msg.role === "user" ? styles.userBubble : styles.botBubble}
-  >
-    {msg.text === "..." ? (
-      <span style={{ fontSize: "28px", letterSpacing: "6px" }}>● ● ●</span>
-    ) : (
-      msg.text
-    )}
-  </div>
-))}
+          <div
+            key={i}
+            style={msg.role === "user" ? styles.userBubble : styles.botBubble}
+          >
+            {msg.text === "..." ? (
+              <span style={{ fontSize: "28px", letterSpacing: "6px" }}>● ● ●</span>
+            ) : (
+              msg.text
+            )}
+          </div>
+        ))}
+      </div>
 
       <div style={styles.inputArea}>
         <input
@@ -209,6 +201,24 @@ const styles = {
     marginTop: 10,
     background: "radial-gradient(circle,#00e5ff,#1565c0,#0d47a1)",
     boxShadow: "0 0 50px #00e5ff",
+  },
+
+  listeningOrb: {
+    boxShadow: "0 0 70px #ff9800",
+    background: "radial-gradient(circle,#ffb74d,#ef6c00,#e65100)",
+    transform: "scale(1.08)",
+  },
+
+  thinkingOrb: {
+    boxShadow: "0 0 70px #b388ff",
+    background: "radial-gradient(circle,#b388ff,#7c4dff,#512da8)",
+    transform: "scale(1.08)",
+  },
+
+  speakingOrb: {
+    boxShadow: "0 0 70px #00e676",
+    background: "radial-gradient(circle,#69f0ae,#00c853,#1b5e20)",
+    transform: "scale(1.08)",
   },
 
   title: {
@@ -289,7 +299,6 @@ const styles = {
     color: "white",
     fontSize: 22,
     cursor: "pointer",
-    boxShadow: "0 0 18px #ff980055",
   },
 
   sendButton: {
@@ -301,7 +310,6 @@ const styles = {
     color: "white",
     fontSize: 22,
     cursor: "pointer",
-    boxShadow: "0 0 18px #00e67655",
   },
 };
 

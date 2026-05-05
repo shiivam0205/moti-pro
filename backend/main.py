@@ -39,7 +39,7 @@ def chat(payload: ChatRequest):
             user_memories[user_id] = [
                 {
                     "role": "system",
-                    "content": "You are MOTI, a smart friendly female AI assistant. Remember recent conversation of this user only and reply naturally."
+                    "content": "You are MOTI, a smart friendly female AI assistant. Remember only this user's recent conversation and reply naturally."
                 }
             ]
 
