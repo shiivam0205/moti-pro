@@ -12,35 +12,16 @@ function App() {
   const [input, setInput] = useState("");
 
   const micRef = useRef(null);
-  const audioRef = useRef(null);
 
-  // ---------------- INIT ----------------
+  // ---------------- LOAD HISTORY ----------------
   useEffect(() => {
-    if (userId) loadHistory(userId);
+    if (userId) loadHistory();
     initMic();
-  }, []);
+  }, [userId]);
 
-  // ---------------- LOGIN ----------------
-  const login = async () => {
+  const loadHistory = async () => {
     try {
-      const res = await axios.post(`${API}/login`, {
-        username,
-        password,
-      });
-
-      localStorage.setItem("user_id", res.data.user_id);
-      setUserId(res.data.user_id);
-
-      loadHistory(res.data.user_id);
-    } catch {
-      alert("Login failed");
-    }
-  };
-
-  // ---------------- HISTORY ----------------
-  const loadHistory = async (uid) => {
-    try {
-      const res = await axios.get(`${API}/history/${uid}`);
+      const res = await axios.get(`${API}/history/${userId}`);
 
       const formatted = res.data.history.map((h) => ({
         role: h[0],
@@ -53,23 +34,44 @@ function App() {
     }
   };
 
-  // ---------------- VOICE ----------------
-  const speak = async (text) => {
+  // ---------------- LOGIN ----------------
+  const login = async () => {
     try {
-      const res = await axios.post(`${API}/voice`, { text }, {
-        responseType: "blob",
+      const res = await axios.post(`${API}/login`, {
+        username,
+        password,
       });
 
-      const url = URL.createObjectURL(res.data);
-      const audio = new Audio(url);
-
-      audioRef.current = audio;
-      audio.play();
-
-    } catch {
-      const utter = new SpeechSynthesisUtterance(text);
-      window.speechSynthesis.speak(utter);
+      localStorage.setItem("user_id", res.data.user_id);
+      setUserId(res.data.user_id);
+    } catch (e) {
+      console.log("login error", e);
     }
+  };
+
+  // ---------------- CHAT ----------------
+  const send = async (text) => {
+    const msg = text || input;
+    if (!msg) return;
+
+    setChat((p) => [...p, { role: "user", text: msg }]);
+
+    try {
+      const res = await axios.post(`${API}/chat`, {
+        user_id: userId,
+        message: msg,
+      });
+
+      setChat((p) => [
+        ...p,
+        { role: "assistant", text: res.data.reply },
+      ]);
+
+    } catch (e) {
+      console.log(e);
+    }
+
+    setInput("");
   };
 
   // ---------------- MIC ----------------
@@ -94,34 +96,22 @@ function App() {
     micRef.current?.start();
   };
 
-  // ---------------- CHAT ----------------
-  const send = async (msg) => {
-    const text = msg || input;
-    if (!text) return;
-
-    setChat((p) => [...p, { role: "user", text }]);
-
-    const res = await axios.post(`${API}/chat`, {
-      user_id: userId,
-      message: text,
-    });
-
-    const reply = res.data.reply;
-
-    setChat((p) => [...p, { role: "assistant", text: reply }]);
-
-    speak(reply);
-    setInput("");
-  };
-
   // ---------------- UI ----------------
   if (!userId) {
     return (
       <div style={{ padding: 20 }}>
         <h2>MOTI AI Login</h2>
 
-        <input placeholder="username" onChange={(e) => setUsername(e.target.value)} />
-        <input placeholder="password" type="password" onChange={(e) => setPassword(e.target.value)} />
+        <input
+          placeholder="username"
+          onChange={(e) => setUsername(e.target.value)}
+        />
+
+        <input
+          placeholder="password"
+          type="password"
+          onChange={(e) => setPassword(e.target.value)}
+        />
 
         <button onClick={login}>Login</button>
       </div>
@@ -140,10 +130,13 @@ function App() {
         ))}
       </div>
 
-      <input value={input} onChange={(e) => setInput(e.target.value)} />
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+      />
 
       <button onClick={() => send()}>Send</button>
-      <button onClick={startMic}>🎤</button>
+      <button onClick={startMic}>🎤 Speak</button>
     </div>
   );
 }
