@@ -8,6 +8,8 @@ function App() {
   const API = "https://moti-pro07.onrender.com";
 
   const speakText = (text) => {
+  window.speechSynthesis.cancel();
+
   const speech = new SpeechSynthesisUtterance(text);
   const voices = window.speechSynthesis.getVoices();
 
@@ -27,6 +29,7 @@ function App() {
 };
 
   const startListening = () => {
+window.speechSynthesis.cancel();
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
 
