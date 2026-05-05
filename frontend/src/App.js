@@ -41,15 +41,17 @@ function App() {
 
     try {
       const res = await axios.post(`${API}/chat`, { message: text });
-      const reply = res.data.reply;
+     const reply = res.data.reply;
 
-      speakText(reply);
+setTimeout(() => {
+  speakText(reply);
 
-      setChat((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { role: "bot", text: reply };
-        return updated;
-      });
+  setChat((prev) => {
+    const updated = [...prev];
+    updated[updated.length - 1] = { role: "bot", text: reply };
+    return updated;
+  });
+}, 1200);
     } catch (err) {
       setStatus("Idle");
       setChat((prev) => {
@@ -123,14 +125,17 @@ speakingOrb: {
 
       <div style={styles.chatContainer}>
         {chat.map((msg, i) => (
-          <div
-            key={i}
-            style={msg.role === "user" ? styles.userBubble : styles.botBubble}
-          >
-            {msg.text === "..." ? <div style={styles.typingDots}>•••</div> : msg.text}
-          </div>
-        ))}
-      </div>
+  <div
+    key={i}
+    style={msg.role === "user" ? styles.userBubble : styles.botBubble}
+  >
+    {msg.text === "..." ? (
+      <span style={{ fontSize: "28px", letterSpacing: "6px" }}>● ● ●</span>
+    ) : (
+      msg.text
+    )}
+  </div>
+))}
 
       <div style={styles.inputArea}>
         <input
