@@ -4,32 +4,65 @@ import axios from "axios";
 function App() {
   const [input, setInput] = useState("");
   const [chat, setChat] = useState([]);
+  const [status, setStatus] = useState("Idle");
 
   const API = "https://moti-pro07.onrender.com";
 
   const speakText = (text) => {
-  window.speechSynthesis.cancel();
+    window.speechSynthesis.cancel();
 
-  const speech = new SpeechSynthesisUtterance(text);
-  const voices = window.speechSynthesis.getVoices();
+    const speech = new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices();
 
-  const femaleVoice =
-    voices.find(v => v.name.includes("Female")) ||
-    voices.find(v => v.name.includes("Samantha")) ||
-    voices.find(v => v.name.includes("Google US English")) ||
-    voices.find(v => v.name.includes("Zira")) ||
-    voices[0];
+    const femaleVoice =
+      voices.find((v) => v.name.includes("Female")) ||
+      voices.find((v) => v.name.includes("Samantha")) ||
+      voices.find((v) => v.name.includes("Google US English")) ||
+      voices.find((v) => v.name.includes("Zira")) ||
+      voices[0];
 
-  speech.voice = femaleVoice;
-  speech.lang = "en-US";
-  speech.rate = 0.95;
-  speech.pitch = 1.2;
+    speech.voice = femaleVoice;
+    speech.lang = "en-US";
+    speech.rate = 0.95;
+    speech.pitch = 1.2;
 
-  window.speechSynthesis.speak(speech);
-};
+    speech.onstart = () => setStatus("Speaking...");
+    speech.onend = () => setStatus("Idle");
+
+    window.speechSynthesis.speak(speech);
+  };
+
+  const sendToAI = async (text) => {
+    if (!text.trim()) return;
+
+    setChat((prev) => [...prev, { role: "user", text }]);
+    setChat((prev) => [...prev, { role: "bot", text: "Thinking..." }]);
+    setStatus("Thinking...");
+
+    try {
+      const res = await axios.post(`${API}/chat`, { message: text });
+      const reply = res.data.reply;
+
+      speakText(reply);
+
+      setChat((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { role: "bot", text: reply };
+        return updated;
+      });
+    } catch (err) {
+      setStatus("Idle");
+      setChat((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { role: "bot", text: "⚠️ Server error" };
+        return updated;
+      });
+    }
+  };
 
   const startListening = () => {
-window.speechSynthesis.cancel();
+    window.speechSynthesis.cancel();
+
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -41,86 +74,31 @@ window.speechSynthesis.cancel();
     const recognition = new SpeechRecognition();
     recognition.lang = "en-US";
     recognition.start();
+    setStatus("Listening...");
 
-    recognition.onresult = async (event) => {
+    recognition.onresult = (event) => {
       const voiceText = event.results[0][0].transcript;
-
-      setInput(voiceText);
-
-      setTimeout(async () => {
-        const text = voiceText;
-
-        setInput("");
-        setChat((prev) => [...prev, { role: "user", text }]);
-        setChat((prev) => [...prev, { role: "bot", text: "..." }]);
-
-        try {
-          const res = await axios.post(`${API}/chat`, {
-            message: text,
-          });
-
-          const reply = res.data.reply;
-
-          speakText(reply);
-
-          setChat((prev) => {
-            const updated = [...prev];
-            updated[updated.length - 1] = { role: "bot", text: reply };
-            return updated;
-          });
-        } catch (err) {
-          setChat((prev) => {
-            const updated = [...prev];
-            updated[updated.length - 1] = {
-              role: "bot",
-              text: "⚠️ Server error",
-            };
-            return updated;
-          });
-        }
-      }, 500);
+      setInput("");
+      sendToAI(voiceText);
     };
+
+    recognition.onerror = () => setStatus("Idle");
   };
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
-
-    const text = input.trim();
+  const sendMessage = () => {
+    const text = input;
     setInput("");
-
-    setChat((prev) => [...prev, { role: "user", text }]);
-    setChat((prev) => [...prev, { role: "bot", text: "..." }]);
-
-    try {
-      const res = await axios.post(`${API}/chat`, {
-        message: text,
-      });
-
-      const reply = res.data.reply;
-
-      speakText(reply);
-
-      setChat((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { role: "bot", text: reply };
-        return updated;
-      });
-    } catch (err) {
-      setChat((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
-          role: "bot",
-          text: "⚠️ Server error",
-        };
-        return updated;
-      });
-    }
+    sendToAI(text);
   };
 
   return (
     <div style={styles.page}>
+      <div style={styles.glow1}></div>
+      <div style={styles.glow2}></div>
+
       <div style={styles.orb}></div>
-      <div style={styles.title}>MOTI AI ASSISTANT</div>
+      <div style={styles.title}>MOTI AI</div>
+      <div style={styles.status}>{status}</div>
 
       <div style={styles.chatContainer}>
         {chat.map((msg, i) => (
@@ -137,7 +115,7 @@ window.speechSynthesis.cancel();
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Talk or type to MOTI..."
+          placeholder="Talk or type..."
           style={styles.input}
         />
 
@@ -156,103 +134,139 @@ window.speechSynthesis.cancel();
 const styles = {
   page: {
     minHeight: "100vh",
-    fontFamily: "Arial",
-    background: "linear-gradient(135deg, #0f2027, #203a43, #2c5364)",
+    background: "linear-gradient(160deg,#050816,#0b1026,#111827)",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     padding: 20,
+    overflow: "hidden",
+    fontFamily: "Segoe UI",
     color: "white",
+    position: "relative",
+  },
+
+  glow1: {
+    position: "absolute",
+    width: 300,
+    height: 300,
+    borderRadius: "50%",
+    background: "#00e5ff33",
+    top: -50,
+    left: -50,
+    filter: "blur(80px)",
+  },
+
+  glow2: {
+    position: "absolute",
+    width: 250,
+    height: 250,
+    borderRadius: "50%",
+    background: "#7c4dff33",
+    bottom: -50,
+    right: -50,
+    filter: "blur(80px)",
   },
 
   orb: {
-    width: 90,
-    height: 90,
+    width: 100,
+    height: 100,
     borderRadius: "50%",
     marginTop: 10,
-    background: "radial-gradient(circle, #00e5ff, #006064)",
-    boxShadow: "0 0 40px #00e5ff",
-    animation: "pulse 2s infinite",
+    background: "radial-gradient(circle,#00e5ff,#1565c0,#0d47a1)",
+    boxShadow: "0 0 50px #00e5ff",
   },
 
   title: {
-    marginTop: 10,
+    marginTop: 12,
+    fontSize: 28,
+    fontWeight: "700",
+    letterSpacing: 3,
+  },
+
+  status: {
+    marginTop: 6,
     marginBottom: 15,
-    fontSize: 24,
-    fontWeight: "bold",
-    letterSpacing: 2,
+    color: "#9be7ff",
+    fontSize: 14,
   },
 
   chatContainer: {
     flex: 1,
     width: "100%",
-    maxWidth: 700,
-    overflowY: "auto",
-    background: "rgba(255,255,255,0.08)",
-    backdropFilter: "blur(12px)",
-    borderRadius: 20,
+    maxWidth: 760,
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    backdropFilter: "blur(18px)",
+    borderRadius: 24,
     padding: 20,
+    overflowY: "auto",
     display: "flex",
     flexDirection: "column",
-    gap: 12,
-    boxShadow: "0 8px 30px rgba(0,0,0,0.3)",
+    gap: 14,
+    boxShadow: "0 10px 40px rgba(0,0,0,0.35)",
+    zIndex: 2,
   },
 
   userBubble: {
     alignSelf: "flex-end",
-    background: "#00acc1",
-    color: "white",
-    padding: "12px 16px",
-    borderRadius: "20px 20px 0 20px",
+    background: "linear-gradient(135deg,#00bcd4,#00838f)",
+    padding: "13px 18px",
+    borderRadius: "22px 22px 4px 22px",
     maxWidth: "75%",
+    fontSize: 15,
   },
 
   botBubble: {
     alignSelf: "flex-start",
-    background: "rgba(255,255,255,0.15)",
-    color: "white",
-    padding: "12px 16px",
-    borderRadius: "20px 20px 20px 0",
+    background: "rgba(255,255,255,0.10)",
+    padding: "13px 18px",
+    borderRadius: "22px 22px 22px 4px",
     maxWidth: "75%",
+    fontSize: 15,
   },
 
   inputArea: {
     width: "100%",
-    maxWidth: 700,
+    maxWidth: 760,
     display: "flex",
-    gap: 10,
-    marginTop: 15,
+    gap: 12,
+    marginTop: 16,
+    zIndex: 2,
   },
 
   input: {
     flex: 1,
-    padding: 14,
-    borderRadius: 30,
-    border: "none",
+    padding: 16,
+    borderRadius: 35,
+    border: "1px solid rgba(255,255,255,0.08)",
     outline: "none",
+    background: "rgba(255,255,255,0.08)",
+    color: "white",
     fontSize: 15,
   },
 
   micButton: {
-    width: 55,
-    height: 55,
+    width: 58,
+    height: 58,
     borderRadius: "50%",
     border: "none",
-    background: "#ff9800",
+    background: "linear-gradient(135deg,#ff9800,#ef6c00)",
     color: "white",
-    fontSize: 20,
+    fontSize: 22,
     cursor: "pointer",
+    boxShadow: "0 0 18px #ff980055",
   },
 
   sendButton: {
-    width: 55,
-    height: 55,
+    width: 58,
+    height: 58,
     borderRadius: "50%",
     border: "none",
-    background: "#00c853",
+    background: "linear-gradient(135deg,#00e676,#00c853)",
     color: "white",
-    fontSize: 20,
+    fontSize: 22,
     cursor: "pointer",
+    boxShadow: "0 0 18px #00e67655",
   },
 };
 
