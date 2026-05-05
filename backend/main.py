@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 from groq import Groq
 import sqlite3
@@ -18,25 +19,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------- AI CLIENT ----------------
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# ---------------- AI ----------------
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY")
 
-# ---------------- DATABASE ----------------
+# ---------------- DB ----------------
 conn = sqlite3.connect("moti.db", check_same_thread=False)
-cursor = conn.cursor()
+cur = conn.cursor()
 
-cursor.execute("""
+cur.execute("""
 CREATE TABLE IF NOT EXISTS users (
-    user_id TEXT PRIMARY KEY,
+    user_id TEXT,
     username TEXT,
     password TEXT
 )
 """)
 
-cursor.execute("""
+cur.execute("""
 CREATE TABLE IF NOT EXISTS chats (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT,
     role TEXT,
     message TEXT
@@ -57,75 +57,65 @@ class Chat(BaseModel):
 class Voice(BaseModel):
     text: str
 
-# ---------------- HOME ----------------
+# ---------------- ROOT ----------------
 @app.get("/")
-def home():
-    return {"status": "MOTI AI ONLINE"}
+def root():
+    return {"status": "MOTI AI RUNNING"}
 
 # ---------------- LOGIN ----------------
 @app.post("/login")
 def login(data: Login):
-    cursor.execute(
+    cur.execute(
         "SELECT user_id FROM users WHERE username=? AND password=?",
         (data.username, data.password)
     )
-
-    user = cursor.fetchone()
+    user = cur.fetchone()
 
     if user:
         return {"user_id": user[0]}
 
-    user_id = str(uuid.uuid4())
+    uid = str(uuid.uuid4())
 
-    cursor.execute(
+    cur.execute(
         "INSERT INTO users VALUES (?, ?, ?)",
-        (user_id, data.username, data.password)
+        (uid, data.username, data.password)
     )
     conn.commit()
 
-    return {"user_id": user_id}
+    return {"user_id": uid}
 
-# ---------------- SAVE CHAT ----------------
-def save(user_id, role, msg):
-    cursor.execute(
-        "INSERT INTO chats (user_id, role, message) VALUES (?, ?, ?)",
-        (user_id, role, msg)
+# ---------------- HISTORY ----------------
+@app.get("/history/{user_id}")
+def history(user_id: str):
+    cur.execute(
+        "SELECT role, message FROM chats WHERE user_id=?",
+        (user_id,)
     )
-    conn.commit()
+    return {"history": cur.fetchall()}
 
 # ---------------- CHAT ----------------
 @app.post("/chat")
 def chat(data: Chat):
-    try:
-        save(data.user_id, "user", data.message)
+    cur.execute(
+        "INSERT INTO chats VALUES (?, ?, ?)",
+        (data.user_id, "user", data.message)
+    )
+    conn.commit()
 
-        cursor.execute(
-            "SELECT role, message FROM chats WHERE user_id=? ORDER BY id DESC LIMIT 10",
-            (data.user_id,)
-        )
+    res = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "user", "content": data.message}]
+    )
 
-        history = cursor.fetchall()[::-1]
+    reply = res.choices[0].message.content
 
-        messages = [
-            {"role": "system", "content": "You are MOTI AI assistant. Be natural and helpful."}
-        ]
+    cur.execute(
+        "INSERT INTO chats VALUES (?, ?, ?)",
+        (data.user_id, "assistant", reply)
+    )
+    conn.commit()
 
-        for h in history:
-            messages.append({"role": h[0], "content": h[1]})
-
-        response = groq_client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=messages
-        )
-
-        reply = response.choices[0].message.content
-
-        save(data.user_id, "assistant", reply)
-
-        return {"reply": reply}
-
-    except Exception as e:
-        return {"reply": f"Error: {str(e)}"}
+    return {"reply": reply}
 
 # ---------------- VOICE ----------------
 @app.post("/voice")
@@ -140,17 +130,13 @@ def voice(data: Voice):
 
         body = {
             "text": data.text,
-            "model_id": "eleven_monolingual_v1",
-            "voice_settings": {
-                "stability": 0.5,
-                "similarity_boost": 0.8
-            }
+            "model_id": "eleven_monolingual_v1"
         }
 
         r = requests.post(url, json=body, headers=headers)
 
         if r.status_code == 200:
-            return r.content
+            return Response(content=r.content, media_type="audio/mpeg")
 
         return {"error": "voice failed"}
 

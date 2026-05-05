@@ -8,21 +8,15 @@ function App() {
   const [password, setPassword] = useState("");
 
   const [userId, setUserId] = useState(localStorage.getItem("user_id") || "");
-  const [loggedIn, setLoggedIn] = useState(false);
-
-  const [input, setInput] = useState("");
   const [chat, setChat] = useState([]);
+  const [input, setInput] = useState("");
 
   const micRef = useRef(null);
   const audioRef = useRef(null);
 
   // ---------------- INIT ----------------
   useEffect(() => {
-    if (userId) {
-      setLoggedIn(true);
-      loadHistory(userId);
-    }
-
+    if (userId) loadHistory(userId);
     initMic();
   }, []);
 
@@ -36,7 +30,6 @@ function App() {
 
       localStorage.setItem("user_id", res.data.user_id);
       setUserId(res.data.user_id);
-      setLoggedIn(true);
 
       loadHistory(res.data.user_id);
     } catch {
@@ -46,31 +39,23 @@ function App() {
 
   // ---------------- HISTORY ----------------
   const loadHistory = async (uid) => {
-    const res = await axios.get(`${API}/history/${uid}`);
+    try {
+      const res = await axios.get(`${API}/history/${uid}`);
 
-    const formatted = res.data.history.map((h) => ({
-      role: h[0] === "assistant" ? "bot" : "user",
-      text: h[1],
-    }));
+      const formatted = res.data.history.map((h) => ({
+        role: h[0],
+        text: h[1],
+      }));
 
-    setChat(formatted);
-  };
-
-  // ---------------- STOP VOICE ----------------
-  const stopVoice = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
+      setChat(formatted);
+    } catch (e) {
+      console.log(e);
     }
-
-    window.speechSynthesis.cancel();
   };
 
   // ---------------- VOICE ----------------
   const speak = async (text) => {
     try {
-      stopVoice();
-
       const res = await axios.post(`${API}/voice`, { text }, {
         responseType: "blob",
       });
@@ -80,6 +65,7 @@ function App() {
 
       audioRef.current = audio;
       audio.play();
+
     } catch {
       const utter = new SpeechSynthesisUtterance(text);
       window.speechSynthesis.speak(utter);
@@ -98,7 +84,7 @@ function App() {
 
     recog.onresult = (e) => {
       const text = e.results[0][0].transcript;
-      sendMessage(text);
+      send(text);
     };
 
     micRef.current = recog;
@@ -109,82 +95,57 @@ function App() {
   };
 
   // ---------------- CHAT ----------------
-  const sendMessage = async (msg) => {
+  const send = async (msg) => {
     const text = msg || input;
-    if (!text.trim()) return;
-
-    stopVoice();
-
-    setInput("");
+    if (!text) return;
 
     setChat((p) => [...p, { role: "user", text }]);
-    setChat((p) => [...p, { role: "bot", text: "..." }]);
 
-    try {
-      const res = await axios.post(`${API}/chat`, {
-        user_id: userId,
-        message: text,
-      });
+    const res = await axios.post(`${API}/chat`, {
+      user_id: userId,
+      message: text,
+    });
 
-      const reply = res.data.reply;
+    const reply = res.data.reply;
 
-      setChat((p) => {
-        const updated = [...p];
-        updated[updated.length - 1] = { role: "bot", text: reply };
-        return updated;
-      });
+    setChat((p) => [...p, { role: "assistant", text: reply }]);
 
-      speak(reply);
-
-    } catch {
-      alert("Server error");
-    }
+    speak(reply);
+    setInput("");
   };
 
-  // ---------------- LOGIN UI ----------------
-  if (!loggedIn) {
+  // ---------------- UI ----------------
+  if (!userId) {
     return (
-      <div style={styles.login}>
-        <h1>MOTI AI</h1>
+      <div style={{ padding: 20 }}>
+        <h2>MOTI AI Login</h2>
 
-        <input placeholder="Username" onChange={(e) => setUsername(e.target.value)} />
-        <input placeholder="Password" type="password" onChange={(e) => setPassword(e.target.value)} />
+        <input placeholder="username" onChange={(e) => setUsername(e.target.value)} />
+        <input placeholder="password" type="password" onChange={(e) => setPassword(e.target.value)} />
 
         <button onClick={login}>Login</button>
       </div>
     );
   }
 
-  // ---------------- CHAT UI ----------------
   return (
-    <div style={styles.app}>
-      <div style={styles.header}>MOTI Voice AI</div>
+    <div style={{ padding: 20 }}>
+      <h2>MOTI AI</h2>
 
-      <div style={styles.chat}>
+      <div style={{ height: 300, overflow: "auto" }}>
         {chat.map((c, i) => (
-          <div key={i} style={{ textAlign: c.role === "user" ? "right" : "left" }}>
-            {c.text}
-          </div>
+          <p key={i}>
+            <b>{c.role}:</b> {c.text}
+          </p>
         ))}
       </div>
 
-      <div style={styles.bottom}>
-        <input value={input} onChange={(e) => setInput(e.target.value)} />
+      <input value={input} onChange={(e) => setInput(e.target.value)} />
 
-        <button onClick={() => sendMessage()}>Send</button>
-        <button onClick={startMic}>🎤</button>
-        <button onClick={stopVoice}>⛔</button>
-      </div>
+      <button onClick={() => send()}>Send</button>
+      <button onClick={startMic}>🎤</button>
     </div>
   );
 }
-
-const styles = {
-  app: { background: "#000", color: "#fff", height: "100vh" },
-  header: { padding: 10 },
-  chat: { padding: 10, flex: 1 },
-  bottom: { display: "flex", gap: 5, padding: 10 },
-  login: { padding: 20 }
-};
 
 export default App;
