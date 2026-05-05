@@ -96,9 +96,27 @@ function App() {
       <div style={styles.glow1}></div>
       <div style={styles.glow2}></div>
 
-      <div style={styles.orb}></div>
-      <div style={styles.title}>MOTI AI</div>
-      <div style={styles.status}>{status}</div>
+     <div
+  style={{
+    ...styles.orb,
+    listeningOrb: {
+  boxShadow: "0 0 70px #ff9800",
+  background: "radial-gradient(circle,#ffb74d,#ef6c00,#e65100)",
+  transform: "scale(1.08)",
+},
+
+thinkingOrb: {
+  boxShadow: "0 0 70px #b388ff",
+  background: "radial-gradient(circle,#b388ff,#7c4dff,#512da8)",
+  transform: "scale(1.08)",
+},
+
+speakingOrb: {
+  boxShadow: "0 0 70px #00e676",
+  background: "radial-gradient(circle,#69f0ae,#00c853,#1b5e20)",
+  transform: "scale(1.08)",
+},
+></div>
 
       <div style={styles.chatContainer}>
         {chat.map((msg, i) => (
