@@ -2,14 +2,13 @@ import React, { useState } from "react";
 import axios from "axios";
 
 function App() {
-const userId = localStorage.getItem("moti_user") || Date.now().toString();
-localStorage.setItem("moti_user", userId);
   const [input, setInput] = useState("");
   const [chat, setChat] = useState([]);
   const [status, setStatus] = useState("Idle");
 
   const API = "https://moti-pro07.onrender.com";
-
+const userId = localStorage.getItem("moti_user") || Date.now().toString();
+localStorage.setItem("moti_user", userId);
   const speakText = (text) => {
     window.speechSynthesis.cancel();
 
