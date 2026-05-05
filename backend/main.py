@@ -43,8 +43,12 @@ def chat(payload: ChatRequest):
             "content": message
         })
 
+        # keep only last few chats to save Groq tokens
+        if len(conversation_history) > 8:
+            conversation_history[:] = [conversation_history[0]] + conversation_history[-7:]
+
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="llama3-8b-8192",
             messages=conversation_history
         )
 
