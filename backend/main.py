@@ -47,11 +47,10 @@ def chat(payload: ChatRequest):
         if len(conversation_history) > 8:
             conversation_history[:] = [conversation_history[0]] + conversation_history[-7:]
 
-        response = client.chat.completions.create(
-            model="llama3-8b-8192",
-            messages=conversation_history
-        )
-
+       response = client.chat.completions.create(
+    model="llama-3.1-8b-instant",
+    messages=conversation_history
+)
         reply = response.choices[0].message.content
 
         conversation_history.append({
