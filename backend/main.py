@@ -76,14 +76,9 @@ def save_chat(user_id, role, message):
     )
     conn.commit()
 
-@app.get("/history/{user_id}")
-def history(user_id: str):
-    cursor.execute(
-        "SELECT role, message FROM chats WHERE user_id=? ORDER BY id",
-        (user_id,)
-    )
-    rows = cursor.fetchall()
-    return {"history": rows}
+@app.get("/")
+def home():
+    return {"status": "MOTI AI running"}
 
 @app.post("/chat")
 def chat(payload: ChatRequest):
