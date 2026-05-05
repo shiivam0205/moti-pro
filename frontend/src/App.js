@@ -36,7 +36,7 @@ function App() {
     if (!text.trim()) return;
 
     setChat((prev) => [...prev, { role: "user", text }]);
-    setChat((prev) => [...prev, { role: "bot", text: "Thinking..." }]);
+    setChat((prev) => [...prev, { role: "bot", text: "..." }]);
     setStatus("Thinking...");
 
     try {
@@ -103,6 +103,9 @@ function App() {
   boxShadow: "0 0 70px #ff9800",
   background: "radial-gradient(circle,#ffb74d,#ef6c00,#e65100)",
   transform: "scale(1.08)",
+typingDots: {
+  fontSize: 26,
+  letterSpacing: 4,
 },
 
 thinkingOrb: {
@@ -124,7 +127,7 @@ speakingOrb: {
             key={i}
             style={msg.role === "user" ? styles.userBubble : styles.botBubble}
           >
-            {msg.text}
+            {msg.text === "..." ? <div style={styles.typingDots}>•••</div> : msg.text}
           </div>
         ))}
       </div>
