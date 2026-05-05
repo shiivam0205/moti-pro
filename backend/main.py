@@ -19,10 +19,15 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 def home():
     return {"status": "MOTI AI running"}
 
+from pydantic import BaseModel
+
+class ChatRequest(BaseModel):
+    message: str
+
 @app.post("/chat")
-def chat(payload: dict):
+def chat(payload: ChatRequest):
     try:
-        message = payload.get("message", "")
+        message = payload.message
 
         if message.strip() == "":
             return {"reply": "Please type something."}
@@ -32,7 +37,7 @@ def chat(payload: dict):
             messages=[
                 {
                     "role": "system",
-                    "content": "You are MOTI, a smart friendly AI assistant. Reply clearly and naturally."
+                    "content": "You are MOTI, a smart friendly AI assistant. Reply naturally."
                 },
                 {
                     "role": "user",
