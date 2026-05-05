@@ -18,11 +18,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------- CLIENTS ----------------
+# ---------------- AI CLIENT ----------------
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY")
 
-# ---------------- DB ----------------
+# ---------------- DATABASE ----------------
 conn = sqlite3.connect("moti.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -46,29 +46,30 @@ CREATE TABLE IF NOT EXISTS chats (
 conn.commit()
 
 # ---------------- MODELS ----------------
-class LoginRequest(BaseModel):
+class Login(BaseModel):
     username: str
     password: str
 
-class ChatRequest(BaseModel):
+class Chat(BaseModel):
     user_id: str
     message: str
 
-class VoiceRequest(BaseModel):
+class Voice(BaseModel):
     text: str
 
 # ---------------- HOME ----------------
 @app.get("/")
 def home():
-    return {"status": "MOTI AI ULTRA VOICE RUNNING"}
+    return {"status": "MOTI AI ONLINE"}
 
 # ---------------- LOGIN ----------------
 @app.post("/login")
-def login(data: LoginRequest):
+def login(data: Login):
     cursor.execute(
         "SELECT user_id FROM users WHERE username=? AND password=?",
         (data.username, data.password)
     )
+
     user = cursor.fetchone()
 
     if user:
@@ -85,37 +86,32 @@ def login(data: LoginRequest):
     return {"user_id": user_id}
 
 # ---------------- SAVE CHAT ----------------
-def save_chat(user_id, role, message):
+def save(user_id, role, msg):
     cursor.execute(
         "INSERT INTO chats (user_id, role, message) VALUES (?, ?, ?)",
-        (user_id, role, message)
+        (user_id, role, msg)
     )
     conn.commit()
 
 # ---------------- CHAT ----------------
 @app.post("/chat")
-def chat(data: ChatRequest):
+def chat(data: Chat):
     try:
-        message = data.message.strip()
-
-        save_chat(data.user_id, "user", message)
+        save(data.user_id, "user", data.message)
 
         cursor.execute(
-            "SELECT role, message FROM chats WHERE user_id=? ORDER BY id DESC LIMIT 12",
+            "SELECT role, message FROM chats WHERE user_id=? ORDER BY id DESC LIMIT 10",
             (data.user_id,)
         )
 
-        rows = cursor.fetchall()[::-1]
+        history = cursor.fetchall()[::-1]
 
         messages = [
-            {
-                "role": "system",
-                "content": "You are MOTI AI. Be natural, friendly, short."
-            }
+            {"role": "system", "content": "You are MOTI AI assistant. Be natural and helpful."}
         ]
 
-        for r in rows:
-            messages.append({"role": r[0], "content": r[1]})
+        for h in history:
+            messages.append({"role": h[0], "content": h[1]})
 
         response = groq_client.chat.completions.create(
             model="llama-3.1-8b-instant",
@@ -124,16 +120,16 @@ def chat(data: ChatRequest):
 
         reply = response.choices[0].message.content
 
-        save_chat(data.user_id, "assistant", reply)
+        save(data.user_id, "assistant", reply)
 
         return {"reply": reply}
 
     except Exception as e:
-        return {"reply": f"Server error: {str(e)}"}
+        return {"reply": f"Error: {str(e)}"}
 
-# ---------------- ULTRA VOICE (ELEVENLABS) ----------------
+# ---------------- VOICE ----------------
 @app.post("/voice")
-def voice(data: VoiceRequest):
+def voice(data: Voice):
     try:
         url = "https://api.elevenlabs.io/v1/text-to-speech/pNInz6obpgDQGcFmaJgB"
 
@@ -142,19 +138,19 @@ def voice(data: VoiceRequest):
             "Content-Type": "application/json"
         }
 
-        payload = {
+        body = {
             "text": data.text,
             "model_id": "eleven_monolingual_v1",
             "voice_settings": {
-                "stability": 0.45,
-                "similarity_boost": 0.85
+                "stability": 0.5,
+                "similarity_boost": 0.8
             }
         }
 
-        res = requests.post(url, json=payload, headers=headers)
+        r = requests.post(url, json=body, headers=headers)
 
-        if res.status_code == 200:
-            return res.content
+        if r.status_code == 200:
+            return r.content
 
         return {"error": "voice failed"}
 

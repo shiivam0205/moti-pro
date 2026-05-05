@@ -13,9 +13,10 @@ function App() {
   const [input, setInput] = useState("");
   const [chat, setChat] = useState([]);
 
-  const recognitionRef = useRef(null);
-  const currentAudio = useRef(null);
+  const micRef = useRef(null);
+  const audioRef = useRef(null);
 
+  // ---------------- INIT ----------------
   useEffect(() => {
     if (userId) {
       setLoggedIn(true);
@@ -57,28 +58,27 @@ function App() {
 
   // ---------------- STOP VOICE ----------------
   const stopVoice = () => {
-    if (currentAudio.current) {
-      currentAudio.current.pause();
-      currentAudio.current = null;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
     }
+
     window.speechSynthesis.cancel();
   };
 
-  // ---------------- ULTRA VOICE ----------------
+  // ---------------- VOICE ----------------
   const speak = async (text) => {
     try {
       stopVoice();
 
-      const res = await axios.post(
-        `${API}/voice`,
-        { text },
-        { responseType: "blob" }
-      );
+      const res = await axios.post(`${API}/voice`, { text }, {
+        responseType: "blob",
+      });
 
       const url = URL.createObjectURL(res.data);
       const audio = new Audio(url);
 
-      currentAudio.current = audio;
+      audioRef.current = audio;
       audio.play();
     } catch {
       const utter = new SpeechSynthesisUtterance(text);
@@ -101,16 +101,16 @@ function App() {
       sendMessage(text);
     };
 
-    recognitionRef.current = recog;
+    micRef.current = recog;
   };
 
   const startMic = () => {
-    recognitionRef.current?.start();
+    micRef.current?.start();
   };
 
   // ---------------- CHAT ----------------
-  const sendMessage = async (textOverride) => {
-    const text = textOverride || input;
+  const sendMessage = async (msg) => {
+    const text = msg || input;
     if (!text.trim()) return;
 
     stopVoice();
@@ -155,10 +155,10 @@ function App() {
     );
   }
 
-  // ---------------- UI ----------------
+  // ---------------- CHAT UI ----------------
   return (
     <div style={styles.app}>
-      <div style={styles.header}>🔥 MOTI Ultra Voice AI</div>
+      <div style={styles.header}>MOTI Voice AI</div>
 
       <div style={styles.chat}>
         {chat.map((c, i) => (
@@ -182,7 +182,7 @@ function App() {
 const styles = {
   app: { background: "#000", color: "#fff", height: "100vh" },
   header: { padding: 10 },
-  chat: { flex: 1, padding: 10 },
+  chat: { padding: 10, flex: 1 },
   bottom: { display: "flex", gap: 5, padding: 10 },
   login: { padding: 20 }
 };
