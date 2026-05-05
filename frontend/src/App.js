@@ -33,39 +33,44 @@ localStorage.setItem("moti_user", userId);
     window.speechSynthesis.speak(speech);
   };
 
-  const sendToAI = async (text) => {
-    if (!text.trim()) return;
+ const sendToAI = async (text) => {
+  if (!text.trim()) return;
 
-    setChat((prev) => [...prev, { role: "user", text }]);
-    setChat((prev) => [...prev, { role: "bot", text: "..." }]);
-    setStatus("Thinking...");
+  setChat((prev) => [...prev, { role: "user", text }]);
+  setChat((prev) => [...prev, { role: "bot", text: "..." }]);
+  setStatus("Thinking...");
 
-    try {
+  try {
     const res = await axios.post(`${API}/chat`, {
-  message: text,
-  user_id: userId
-});
-     const reply = res.data.reply;
+      message: text,
+      user_id: userId,
+    });
 
-setTimeout(() => {
-  speakText(reply);
+    const reply = res.data.reply;
 
-  setChat((prev) => {
-    const updated = [...prev];
-    updated[updated.length - 1] = { role: "bot", text: reply };
-    return updated;
-  });
-}, 1200);
-    } catch (err) {
-      setStatus("Idle");
+    setTimeout(() => {
+      speakText(reply);
+
       setChat((prev) => {
         const updated = [...prev];
-        updated[updated.length - 1] = { role: "bot", text: "⚠️ Server error" };
+        updated[updated.length - 1] = { role: "bot", text: reply };
         return updated;
       });
-    }
-  };
+    }, 1200);
 
+  } catch (err) {
+    setStatus("Idle");
+
+    setChat((prev) => {
+      const updated = [...prev];
+      updated[updated.length - 1] = {
+        role: "bot",
+        text: "⚠️ Server error",
+      };
+      return updated;
+    });
+  }
+};
   const startListening = () => {
     window.speechSynthesis.cancel();
 
