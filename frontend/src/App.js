@@ -65,7 +65,6 @@ function App() {
           </div>
         ))}
       </div>
-<h1 style={{color:"red"}}>UI TEST CHANGE 123</h1>
 
       {/* INPUT AREA */}
       <div style={styles.inputArea}>
