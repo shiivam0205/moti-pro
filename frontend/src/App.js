@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 
 function App() {
@@ -13,13 +13,19 @@ function App() {
   const [input, setInput] = useState("");
   const [chat, setChat] = useState([]);
 
+  const recognitionRef = useRef(null);
+  const currentAudio = useRef(null);
+
   useEffect(() => {
     if (userId) {
       setLoggedIn(true);
       loadHistory(userId);
     }
+
+    initMic();
   }, []);
 
+  // ---------------- LOGIN ----------------
   const login = async () => {
     try {
       const res = await axios.post(`${API}/login`, {
@@ -27,43 +33,92 @@ function App() {
         password,
       });
 
-      if (res.data.error) {
-        alert(res.data.error);
-        return;
-      }
-
       localStorage.setItem("user_id", res.data.user_id);
       setUserId(res.data.user_id);
       setLoggedIn(true);
+
       loadHistory(res.data.user_id);
-    } catch (err) {
-      alert(err.response?.data?.error || "Login failed");
+    } catch {
+      alert("Login failed");
     }
   };
 
+  // ---------------- HISTORY ----------------
   const loadHistory = async (uid) => {
+    const res = await axios.get(`${API}/history/${uid}`);
+
+    const formatted = res.data.history.map((h) => ({
+      role: h[0] === "assistant" ? "bot" : "user",
+      text: h[1],
+    }));
+
+    setChat(formatted);
+  };
+
+  // ---------------- STOP VOICE ----------------
+  const stopVoice = () => {
+    if (currentAudio.current) {
+      currentAudio.current.pause();
+      currentAudio.current = null;
+    }
+    window.speechSynthesis.cancel();
+  };
+
+  // ---------------- ULTRA VOICE ----------------
+  const speak = async (text) => {
     try {
-      const res = await axios.get(`${API}/history/${uid}`);
+      stopVoice();
 
-      const formatted = res.data.history.map((h) => ({
-        role: h[0] === "assistant" ? "bot" : "user",
-        text: h[1],
-      }));
+      const res = await axios.post(
+        `${API}/voice`,
+        { text },
+        { responseType: "blob" }
+      );
 
-      setChat(formatted);
-    } catch (err) {
-      console.log(err);
+      const url = URL.createObjectURL(res.data);
+      const audio = new Audio(url);
+
+      currentAudio.current = audio;
+      audio.play();
+    } catch {
+      const utter = new SpeechSynthesisUtterance(text);
+      window.speechSynthesis.speak(utter);
     }
   };
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
+  // ---------------- MIC ----------------
+  const initMic = () => {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
 
-    const text = input;
+    if (!SpeechRecognition) return;
+
+    const recog = new SpeechRecognition();
+    recog.lang = "en-IN";
+
+    recog.onresult = (e) => {
+      const text = e.results[0][0].transcript;
+      sendMessage(text);
+    };
+
+    recognitionRef.current = recog;
+  };
+
+  const startMic = () => {
+    recognitionRef.current?.start();
+  };
+
+  // ---------------- CHAT ----------------
+  const sendMessage = async (textOverride) => {
+    const text = textOverride || input;
+    if (!text.trim()) return;
+
+    stopVoice();
+
     setInput("");
 
-    setChat((prev) => [...prev, { role: "user", text }]);
-    setChat((prev) => [...prev, { role: "bot", text: "..." }]);
+    setChat((p) => [...p, { role: "user", text }]);
+    setChat((p) => [...p, { role: "bot", text: "..." }]);
 
     try {
       const res = await axios.post(`${API}/chat`, {
@@ -73,177 +128,63 @@ function App() {
 
       const reply = res.data.reply;
 
-      setChat((prev) => {
-        const updated = [...prev];
+      setChat((p) => {
+        const updated = [...p];
         updated[updated.length - 1] = { role: "bot", text: reply };
         return updated;
       });
-    } catch (err) {
-      setChat((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
-          role: "bot",
-          text: "⚠️ Server error",
-        };
-        return updated;
-      });
+
+      speak(reply);
+
+    } catch {
+      alert("Server error");
     }
   };
 
   // ---------------- LOGIN UI ----------------
   if (!loggedIn) {
     return (
-      <div style={styles.loginWrap}>
-        <div style={styles.loginBox}>
-          <h1 style={styles.logo}>MOTI AI</h1>
+      <div style={styles.login}>
+        <h1>MOTI AI</h1>
 
-          <input
-            placeholder="Username"
-            style={styles.input}
-            onChange={(e) => setUsername(e.target.value)}
-          />
+        <input placeholder="Username" onChange={(e) => setUsername(e.target.value)} />
+        <input placeholder="Password" type="password" onChange={(e) => setPassword(e.target.value)} />
 
-          <input
-            placeholder="Password"
-            type="password"
-            style={styles.input}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-
-          <button style={styles.button} onClick={login}>
-            Login / Signup
-          </button>
-        </div>
+        <button onClick={login}>Login</button>
       </div>
     );
   }
 
-  // ---------------- CHAT UI ----------------
+  // ---------------- UI ----------------
   return (
     <div style={styles.app}>
-      <div style={styles.header}>✨ MOTI AI Assistant</div>
+      <div style={styles.header}>🔥 MOTI Ultra Voice AI</div>
 
-      <div style={styles.chatBox}>
-        {chat.map((msg, i) => (
-          <div
-            key={i}
-            style={
-              msg.role === "user"
-                ? styles.userMsg
-                : styles.botMsg
-            }
-          >
-            {msg.text}
+      <div style={styles.chat}>
+        {chat.map((c, i) => (
+          <div key={i} style={{ textAlign: c.role === "user" ? "right" : "left" }}>
+            {c.text}
           </div>
         ))}
       </div>
 
       <div style={styles.bottom}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          style={styles.chatInput}
-          placeholder="Type message..."
-        />
+        <input value={input} onChange={(e) => setInput(e.target.value)} />
 
-        <button style={styles.sendBtn} onClick={sendMessage}>
-          Send
-        </button>
+        <button onClick={() => sendMessage()}>Send</button>
+        <button onClick={startMic}>🎤</button>
+        <button onClick={stopVoice}>⛔</button>
       </div>
     </div>
   );
 }
 
 const styles = {
-  app: {
-    background: "#0f0f0f",
-    height: "100vh",
-    color: "white",
-    display: "flex",
-    flexDirection: "column",
-  },
-
-  header: {
-    padding: 15,
-    fontSize: 20,
-    fontWeight: "bold",
-    background: "#111",
-    textAlign: "center",
-  },
-
-  chatBox: {
-    flex: 1,
-    overflowY: "auto",
-    padding: 10,
-  },
-
-  userMsg: {
-    background: "#2b7cff",
-    padding: 10,
-    margin: 6,
-    borderRadius: 10,
-    textAlign: "right",
-  },
-
-  botMsg: {
-    background: "#222",
-    padding: 10,
-    margin: 6,
-    borderRadius: 10,
-  },
-
-  bottom: {
-    display: "flex",
-    padding: 10,
-    background: "#111",
-  },
-
-  chatInput: {
-    flex: 1,
-    padding: 10,
-    borderRadius: 8,
-    border: "none",
-  },
-
-  sendBtn: {
-    marginLeft: 10,
-    padding: "10px 20px",
-  },
-
-  loginWrap: {
-    height: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    background: "#0f0f0f",
-  },
-
-  loginBox: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    padding: 20,
-    background: "#111",
-    borderRadius: 10,
-  },
-
-  input: {
-    padding: 10,
-    borderRadius: 6,
-    border: "none",
-  },
-
-  button: {
-    padding: 10,
-    background: "#2b7cff",
-    color: "white",
-    border: "none",
-    borderRadius: 6,
-  },
-
-  logo: {
-    textAlign: "center",
-  },
+  app: { background: "#000", color: "#fff", height: "100vh" },
+  header: { padding: 10 },
+  chat: { flex: 1, padding: 10 },
+  bottom: { display: "flex", gap: 5, padding: 10 },
+  login: { padding: 20 }
 };
 
 export default App;
