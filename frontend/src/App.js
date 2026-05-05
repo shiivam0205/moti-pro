@@ -25,7 +25,13 @@ function App() {
       setInput(voiceText);
     };
   };
-
+const speakText = (text) => {
+  const speech = new SpeechSynthesisUtterance(text);
+  speech.lang = "en-US";
+  speech.rate = 1;
+  speech.pitch = 1;
+  window.speechSynthesis.speak(speech);
+};
   const sendMessage = async () => {
     if (!input.trim()) return;
 
@@ -41,7 +47,7 @@ function App() {
       });
 
       const reply = res.data.reply;
-
+speakText(reply);
       setChat((prev) => {
         const updated = [...prev];
         updated[updated.length - 1] = { role: "bot", text: reply };
