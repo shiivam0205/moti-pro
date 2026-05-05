@@ -16,15 +16,15 @@ app.add_middleware(
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-conversation_history = [
-    {
+user_memories = {
         "role": "system",
         "content": "You are MOTI, a smart friendly female AI assistant. Remember recent conversation and reply naturally."
     }
-]
+
 
 class ChatRequest(BaseModel):
     message: str
+    user_id: str
 
 @app.get("/")
 def home():
@@ -34,26 +34,37 @@ def home():
 def chat(payload: ChatRequest):
     try:
         message = payload.message
+        user_id = payload.user_id
 
         if message.strip() == "":
             return {"reply": "Please type something."}
 
-        conversation_history.append({
+        if user_id not in user_memories:
+            user_memories[user_id] = [
+                {
+                    "role": "system",
+                    "content": "You are MOTI, a smart friendly female AI assistant. Remember recent conversation of this user only and reply naturally."
+                }
+            ]
+
+        history = user_memories[user_id]
+
+        history.append({
             "role": "user",
             "content": message
         })
 
-        if len(conversation_history) > 8:
-            conversation_history[:] = [conversation_history[0]] + conversation_history[-7:]
+        if len(history) > 8:
+            history[:] = [history[0]] + history[-7:]
 
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
-            messages=conversation_history
+            messages=history
         )
 
         reply = response.choices[0].message.content
 
-        conversation_history.append({
+        history.append({
             "role": "assistant",
             "content": reply
         })
