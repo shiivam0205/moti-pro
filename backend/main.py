@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
 from pydantic import BaseModel
 import os
+import sqlite3
 
 app = FastAPI()
 
@@ -16,16 +17,43 @@ app.add_middleware(
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# recent chat memory
-user_memories = {}
+# ---------------- DATABASE ----------------
+conn = sqlite3.connect("moti.db", check_same_thread=False)
+cursor = conn.cursor()
 
-# permanent personal profile memory
-user_profiles = {}
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS memory (
+    user_id TEXT,
+    type TEXT,
+    content TEXT
+)
+""")
 
+conn.commit()
+
+# ---------------- REQUEST ----------------
 class ChatRequest(BaseModel):
     message: str
     user_id: str
 
+# ---------------- SAVE MEMORY ----------------
+def save_memory(user_id, content):
+    cursor.execute(
+        "INSERT INTO memory (user_id, type, content) VALUES (?, ?, ?)",
+        (user_id, "fact", content)
+    )
+    conn.commit()
+
+# ---------------- LOAD MEMORY ----------------
+def load_memory(user_id):
+    cursor.execute(
+        "SELECT content FROM memory WHERE user_id = ?",
+        (user_id,)
+    )
+    rows = cursor.fetchall()
+    return [r[0] for r in rows]
+
+# ---------------- API ----------------
 @app.get("/")
 def home():
     return {"status": "MOTI AI running"}
@@ -39,76 +67,38 @@ def chat(payload: ChatRequest):
         if message == "":
             return {"reply": "Please type something."}
 
-        # create personal profile if new user
-        if user_id not in user_profiles:
-            user_profiles[user_id] = []
+        lower = message.lower()
 
-        # save personal facts when user says remember/my name/my favorite/i am/i like
-        lower_msg = message.lower()
+        # detect personal info
+        if any(x in lower for x in ["my name is", "i am", "i like", "i love"]):
+            save_memory(user_id, message)
 
-        trigger_words = [
-            "my name is",
-            "i am ",
-            "i'm ",
-            "my favorite",
-            "i like",
-            "i love",
-            "remember that",
-            "remember this",
-            "my birthday",
-            "i live in"
+        memory = load_memory(user_id)
+
+        memory_text = ""
+        if memory:
+            memory_text = "User memory: " + " | ".join(memory)
+
+        messages = [
+            {
+                "role": "system",
+                "content": f"You are MOTI, a friendly AI assistant. Use user memory when needed. {memory_text}"
+            },
+            {
+                "role": "user",
+                "content": message
+            }
         ]
-
-        for t in trigger_words:
-            if t in lower_msg:
-                if message not in user_profiles[user_id]:
-                    user_profiles[user_id].append(message)
-                break
-
-        personal_memory_text = ""
-        if len(user_profiles[user_id]) > 0:
-            personal_memory_text = "Here is what you permanently know about this user: " + " | ".join(user_profiles[user_id])
-
-        # create recent conversation if new
-        if user_id not in user_memories:
-            user_memories[user_id] = [
-                {
-                    "role": "system",
-                    "content": "You are MOTI, a smart friendly female AI assistant. Reply naturally and personally."
-                }
-            ]
-
-        history = user_memories[user_id]
-
-        # update system prompt with permanent memory
-        history[0] = {
-            "role": "system",
-            "content": f"You are MOTI, a smart friendly female AI assistant. Reply naturally and personally. {personal_memory_text}"
-        }
-
-        history.append({
-            "role": "user",
-            "content": message
-        })
-
-        # keep recent short chat memory
-        if len(history) > 10:
-            history[:] = [history[0]] + history[-9:]
 
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
-            messages=history
+            messages=messages
         )
 
         reply = response.choices[0].message.content
 
-        history.append({
-            "role": "assistant",
-            "content": reply
-        })
-
         return {"reply": reply}
 
     except Exception as e:
-        print("AI ERROR:", str(e))
+        print("ERROR:", str(e))
         return {"reply": f"AI error: {str(e)}"}
