@@ -1,11 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
 from pydantic import BaseModel
 import sqlite3
 import uuid
-import os
-import requests
 
 app = FastAPI()
 
@@ -18,7 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------- DB ----------------
+# ---------------- DATABASE ----------------
 conn = sqlite3.connect("moti.db", check_same_thread=False)
 cur = conn.cursor()
 
@@ -41,31 +38,27 @@ CREATE TABLE IF NOT EXISTS chats (
 conn.commit()
 
 # ---------------- MODELS ----------------
-class Login(BaseModel):
+class LoginData(BaseModel):
     username: str
     password: str
 
-class Chat(BaseModel):
+class ChatData(BaseModel):
     user_id: str
     message: str
 
-class Voice(BaseModel):
-    text: str
-
 # ---------------- ROOT ----------------
 @app.get("/")
-def home():
+def root():
     return {"status": "MOTI AI RUNNING"}
 
 # ---------------- LOGIN ----------------
 @app.post("/login")
-def login(data: Login):
+def login(data: LoginData):
     try:
         cur.execute(
             "SELECT user_id FROM users WHERE username=? AND password=?",
             (data.username, data.password)
         )
-
         user = cur.fetchone()
 
         if user:
@@ -84,9 +77,22 @@ def login(data: Login):
     except Exception as e:
         return {"error": str(e)}
 
+# ---------------- HISTORY ----------------
+@app.get("/history/{user_id}")
+def history(user_id: str):
+    try:
+        cur.execute(
+            "SELECT role, message FROM chats WHERE user_id=?",
+            (user_id,)
+        )
+        rows = cur.fetchall()
+        return {"history": rows}
+    except Exception as e:
+        return {"history": [], "error": str(e)}
+
 # ---------------- CHAT ----------------
 @app.post("/chat")
-def chat(data: Chat):
+def chat(data: ChatData):
     try:
         cur.execute(
             "INSERT INTO chats VALUES (?, ?, ?)",
@@ -94,8 +100,16 @@ def chat(data: Chat):
         )
         conn.commit()
 
-        # SIMPLE SAFE RESPONSE (NO API CRASH)
-        reply = "I understood: " + data.message
+        text = data.message.lower()
+
+        if "my name" in text:
+            reply = "Your account is connected with MOTI memory. I remember you."
+        elif "hello" in text:
+            reply = "Hello, I am MOTI, your premium AI assistant."
+        elif "who are you" in text:
+            reply = "I am MOTI, an intelligent emotional voice assistant built for premium conversations."
+        else:
+            reply = "MOTI understood: " + data.message
 
         cur.execute(
             "INSERT INTO chats VALUES (?, ?, ?)",
@@ -107,22 +121,3 @@ def chat(data: Chat):
 
     except Exception as e:
         return {"reply": "Server error: " + str(e)}
-
-# ---------------- HISTORY ----------------
-@app.get("/history/{user_id}")
-def history(user_id: str):
-    cur.execute(
-        "SELECT role, message FROM chats WHERE user_id=?",
-        (user_id,)
-    )
-    return {"history": cur.fetchall()}
-
-# ---------------- VOICE (SAFE FALLBACK ONLY) ----------------
-@app.post("/voice")
-def voice(data: Voice):
-    try:
-        # fallback voice (no API dependency = no errors)
-        return {"audio": "fallback"}
-
-    except Exception as e:
-        return {"error": str(e)}
