@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import sqlite3
 import uuid
+import random
 
 app = FastAPI()
 
@@ -88,7 +89,65 @@ def history(user_id: str):
         rows = cur.fetchall()
         return {"history": rows}
     except Exception as e:
-        return {"history": [], "error": str(e)}
+        return {"history": []}
+
+# ---------------- AI RESPONSE ENGINE ----------------
+def generate_ai_reply(user_id, message):
+    text = message.lower()
+
+    cur.execute("SELECT username FROM users WHERE user_id=?", (user_id,))
+    user = cur.fetchone()
+    username = user[0] if user else "friend"
+
+    cur.execute(
+        "SELECT role, message FROM chats WHERE user_id=? ORDER BY rowid DESC LIMIT 6",
+        (user_id,)
+    )
+    memory = cur.fetchall()
+
+    greetings = [
+        f"Hello {username}, I'm here with you.",
+        f"Hi {username}, tell me what's on your mind.",
+        f"Hey {username}, MOTI is listening."
+    ]
+
+    smart_random = [
+        "Interesting... tell me more.",
+        "I understand what you're saying.",
+        "That's actually worth discussing deeper.",
+        "Hmm, I can help you with that.",
+        "Let me think about that with you."
+    ]
+
+    if "hello" in text or "hi" in text:
+        return random.choice(greetings)
+
+    if "my name" in text:
+        return f"Your registered name in my memory is {username}."
+
+    if "who are you" in text:
+        return "I am MOTI, your premium intelligent emotional AI assistant."
+
+    if "how are you" in text:
+        return random.choice([
+            "I'm functioning perfectly and fully focused on you.",
+            "Feeling active and ready to help.",
+            "All systems stable. I'm doing great."
+        ])
+
+    if "love" in text:
+        return "Love is a powerful emotion. Are we talking about someone special?"
+
+    if "sad" in text or "depressed" in text:
+        return "I can feel some heaviness in your words. Want to talk about what's causing it?"
+
+    if "bye" in text:
+        return f"I'll be here whenever you need me, {username}."
+
+    if len(memory) > 4:
+        return random.choice(smart_random) + " Also, I'm remembering our recent conversation."
+
+    return random.choice(smart_random)
 
 # ---------------- CHAT ----------------
 @app.post("/chat")
@@ -100,16 +159,7 @@ def chat(data: ChatData):
         )
         conn.commit()
 
-        text = data.message.lower()
-
-        if "my name" in text:
-            reply = "Your account is connected with MOTI memory. I remember you."
-        elif "hello" in text:
-            reply = "Hello, I am MOTI, your premium AI assistant."
-        elif "who are you" in text:
-            reply = "I am MOTI, an intelligent emotional voice assistant built for premium conversations."
-        else:
-            reply = "MOTI understood: " + data.message
+        reply = generate_ai_reply(data.user_id, data.message)
 
         cur.execute(
             "INSERT INTO chats VALUES (?, ?, ?)",
