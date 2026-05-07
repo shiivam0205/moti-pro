@@ -1,264 +1,477 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
+
+const API = "https://moti-pro07.onrender.com";
 
 export default function App() {
 
-  const API = "https://moti-pro07.onrender.com";
+  // ================= STATES =================
 
-  const [userId, setUserId] = useState(localStorage.getItem("uid"));
+  const [userId, setUserId] = useState(
+    localStorage.getItem("uid") || ""
+  );
+
+  const [loggedIn, setLoggedIn] = useState(
+    !!localStorage.getItem("uid")
+  );
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
-  const [chatId, setChatId] = useState(Date.now().toString());
-  const [history, setHistory] = useState([]);
   const [messages, setMessages] = useState([]);
 
   const [input, setInput] = useState("");
 
-  const chatRef = useRef(null);
+  const [chatId, setChatId] = useState(
+    Date.now().toString()
+  );
 
-  // ================= PERSIST LOGIN =================
-  useEffect(() => {
-    if (userId) {
-      localStorage.setItem("uid", userId);
-      loadHistory();
-    }
-  }, [userId]);
+  const [history, setHistory] = useState([]);
 
-  // ================= AUTO SCROLL =================
-  useEffect(() => {
-    chatRef.current?.scrollTo(0, chatRef.current.scrollHeight);
-  }, [messages]);
+  const [listening, setListening] = useState(false);
 
-  // ================= LOAD HISTORY (ChatGPT style) =================
+  // ================= LOAD HISTORY =================
+
   const loadHistory = async () => {
 
-    const res = await fetch(`${API}/history/${userId}`);
-    const data = await res.json();
+    if (!userId) return;
 
-    setHistory(data.chats);
+    try {
 
-    if (data.chats.length > 0) {
-      openChat(data.chats[0]); // last active chat
+      const res = await fetch(
+        `${API}/history/${userId}`
+      );
+
+      const data = await res.json();
+
+      setHistory(data.chats || []);
+
+    } catch (err) {
+
+      console.log(err);
+
     }
+
   };
 
-  // ================= OPEN CHAT =================
-  const openChat = async (id) => {
+  // ================= LOAD CHAT =================
 
-    setChatId(id);
+  const loadChat = async (id) => {
 
-    const res = await fetch(`${API}/load/${userId}/${id}`);
-    const data = await res.json();
+    try {
 
-    setMessages(
-      data.messages.map(m => ({
+      const res = await fetch(
+        `${API}/load/${userId}/${id}`
+      );
+
+      const data = await res.json();
+
+      const loaded = (data.messages || []).map((m) => ({
         role: m[0],
         text: m[1]
-      }))
-    );
-  };
+      }));
 
-  // ================= NEW CHAT (DOES NOT DELETE OLD) =================
-  const newChat = () => {
+      setMessages(loaded);
 
-    const id = Date.now().toString();
+      setChatId(id);
 
-    setChatId(id);
-    setMessages([]);
+    } catch (err) {
 
-    // reload sidebar history
-    loadHistory();
-  };
+      console.log(err);
 
-  // ================= LOGOUT =================
-  const logout = () => {
-    localStorage.removeItem("uid");
-    setUserId(null);
-  };
+    }
 
-  // ================= VOICE (FIXED PRONUNCIATION) =================
-  const speak = (text) => {
-
-    window.speechSynthesis.cancel();
-
-    const speech = new SpeechSynthesisUtterance(text);
-
-    speech.rate = 1;
-    speech.pitch = 1;
-    speech.volume = 1;
-
-    // better pronunciation stability
-    speech.lang = "en-US";
-
-    window.speechSynthesis.speak(speech);
-  };
-
-  // ================= TYPEWRITER ANIMATION =================
-  const typeWriter = (text, callback) => {
-
-    let i = 0;
-    let current = "";
-
-    const interval = setInterval(() => {
-
-      current += text[i];
-      i++;
-
-      callback(current);
-
-      if (i >= text.length) clearInterval(interval);
-
-    }, 18);
-  };
-
-  // ================= SEND MESSAGE =================
-  const send = async (customText) => {
-
-    const text = customText || input;
-    if (!text) return;
-
-    const updated = [...messages, { role: "user", text }];
-    setMessages(updated);
-
-    setInput("");
-
-    const res = await fetch(`${API}/chat`, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({
-        user_id: userId,
-        chat_id: chatId,
-        message: text
-      })
-    });
-
-    const data = await res.json();
-
-    // placeholder AI message
-    const placeholder = [...updated, { role: "ai", text: "" }];
-    setMessages(placeholder);
-
-    // animation reply
-    typeWriter(data.reply, (val) => {
-
-      setMessages(prev => {
-        const copy = [...prev];
-        copy[copy.length - 1] = { role: "ai", text: val };
-        return copy;
-      });
-
-    });
-
-    speak(data.reply);
   };
 
   // ================= LOGIN =================
+
   const login = async () => {
 
-    const res = await fetch(`${API}/login`, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ username, password })
-    });
-
-    const data = await res.json();
-
-    if (data.user_id) {
-      setUserId(data.user_id);
+    if (!username || !password) {
+      alert("Enter username and password");
+      return;
     }
+
+    try {
+
+      const res = await fetch(`${API}/login`, {
+
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json"
+        },
+
+        body: JSON.stringify({
+          username,
+          password
+        })
+
+      });
+
+      const data = await res.json();
+
+      if (data.user_id) {
+
+        localStorage.setItem("uid", data.user_id);
+
+        setUserId(data.user_id);
+
+        setLoggedIn(true);
+
+        loadHistory();
+
+      } else {
+
+        alert(data.error || "Login failed");
+
+      }
+
+    } catch (err) {
+
+      console.log(err);
+
+      alert("Backend connection failed");
+
+    }
+
   };
 
+  // ================= LOGOUT =================
+
+  const logout = () => {
+
+    localStorage.removeItem("uid");
+
+    setLoggedIn(false);
+
+    setUserId("");
+
+    setMessages([]);
+
+    setHistory([]);
+
+  };
+
+  // ================= NEW CHAT =================
+
+  const newChat = () => {
+
+    const freshId = Date.now().toString();
+
+    setChatId(freshId);
+
+    setMessages([]);
+
+    setInput("");
+
+  };
+
+  // ================= SEND =================
+
+  const send = async (customText = null) => {
+
+    const text = customText || input;
+
+    if (!text || !text.trim()) return;
+
+    let activeChatId = chatId;
+
+    if (!activeChatId) {
+
+      activeChatId = Date.now().toString();
+
+      setChatId(activeChatId);
+
+    }
+
+    const userMessage = {
+      role: "user",
+      text
+    };
+
+    const updatedMessages = [
+      ...messages,
+      userMessage
+    ];
+
+    setMessages(updatedMessages);
+
+    setInput("");
+
+    try {
+
+      const res = await fetch(`${API}/chat`, {
+
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json"
+        },
+
+        body: JSON.stringify({
+
+          user_id: userId,
+
+          chat_id: activeChatId,
+
+          message: text
+
+        })
+
+      });
+
+      const data = await res.json();
+
+      const aiMessage = {
+        role: "ai",
+        text: data.reply || "No response"
+      };
+
+      // AI VOICE
+      const speech =
+        new SpeechSynthesisUtterance(
+          data.reply || "No response"
+        );
+
+      speech.lang = "en-US";
+      speech.rate = 1;
+
+      window.speechSynthesis.speak(speech);
+
+      setMessages([
+        ...updatedMessages,
+        aiMessage
+      ]);
+
+      loadHistory();
+
+    } catch (err) {
+
+      console.log(err);
+
+    }
+
+  };
+
+  // ================= MIC =================
+
+  const startVoice = () => {
+
+    const SpeechRecognition =
+      window.SpeechRecognition ||
+      window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Speech Recognition not supported");
+      return;
+    }
+
+    const recognition =
+      new SpeechRecognition();
+
+    recognition.lang = "en-US";
+
+    recognition.interimResults = false;
+
+    recognition.continuous = false;
+
+    setListening(true);
+
+    recognition.start();
+
+    recognition.onresult = (event) => {
+
+      const transcript =
+        event.results[0][0].transcript;
+
+      setInput(transcript);
+
+      setTimeout(() => {
+        send(transcript);
+      }, 300);
+
+    };
+
+    recognition.onend = () => {
+      setListening(false);
+    };
+
+    recognition.onerror = () => {
+      setListening(false);
+    };
+
+  };
+
+  // ================= ENTER =================
+
+  const handleKey = (e) => {
+
+    if (e.key === "Enter") {
+      send();
+    }
+
+  };
+
+  // ================= EFFECT =================
+
+  useEffect(() => {
+
+    if (userId) {
+      loadHistory();
+    }
+
+  }, [userId]);
+
   // ================= LOGIN UI =================
-  if (!userId) {
+
+  if (!loggedIn) {
+
     return (
-      <div style={styles.loginWrap}>
 
-        <div style={styles.loginCard}>
-          <h2 style={styles.title}>✨ MOTI AI ✨</h2>
+      <div style={styles.loginPage}>
 
-          <input style={styles.inputSmall} placeholder="username"
-            onChange={(e)=>setUsername(e.target.value)} />
+        <div style={styles.loginBox}>
 
-          <input style={styles.inputSmall} type="password"
-            placeholder="password"
-            onChange={(e)=>setPassword(e.target.value)} />
+          <h1>MOTI AI</h1>
 
-          <button style={styles.btn} onClick={login}>
-            Enter AI World
+          <input
+            placeholder="Username"
+            value={username}
+            onChange={(e) =>
+              setUsername(e.target.value)
+            }
+            style={styles.input}
+          />
+
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) =>
+              setPassword(e.target.value)
+            }
+            style={styles.input}
+          />
+
+          <button
+            onClick={login}
+            style={styles.button}
+          >
+            Login
           </button>
 
         </div>
 
       </div>
+
     );
+
   }
 
   // ================= MAIN UI =================
+
   return (
-    <div style={styles.app}>
+
+    <div style={styles.container}>
 
       {/* SIDEBAR */}
+
       <div style={styles.sidebar}>
 
-        <button style={styles.newChat} onClick={newChat}>
+        <button
+          onClick={newChat}
+          style={styles.newChat}
+        >
           + New Chat
         </button>
 
-        <div style={styles.history}>
-          {history.map((h,i)=>(
-            <div
-              key={i}
-              style={styles.chatItem}
-              onClick={()=>openChat(h)}
-            >
-              💬 Chat {i+1}
-            </div>
-          ))}
-        </div>
-
-        <button style={styles.logout} onClick={logout}>
+        <button
+          onClick={logout}
+          style={styles.logout}
+        >
           Logout
         </button>
 
+        <div style={styles.history}>
+
+          {history.map((id, index) => (
+
+            <div
+              key={index}
+              onClick={() => loadChat(id)}
+              style={styles.chatItem}
+            >
+              Chat {index + 1}
+            </div>
+
+          ))}
+
+        </div>
+
       </div>
 
-      {/* CHAT AREA */}
+      {/* MAIN */}
+
       <div style={styles.main}>
 
-        <div style={styles.header}>
-          💖 MOTI AI GIRL CHAT
-        </div>
+        <div style={styles.messages}>
 
-        <div style={styles.chat} ref={chatRef}>
-          {messages.map((m,i)=>(
+          {messages.map((msg, index) => (
+
             <div
-              key={i}
+              key={index}
               style={{
-                ...styles.msg,
-                alignSelf: m.role==="user"?"flex-end":"flex-start",
-                background: m.role==="user"
-                  ? "linear-gradient(135deg,#6a11cb,#2575fc)"
-                  : "rgba(255,255,255,0.08)"
+                ...styles.message,
+                alignSelf:
+                  msg.role === "user"
+                    ? "flex-end"
+                    : "flex-start",
+
+                background:
+                  msg.role === "user"
+                    ? "#2563eb"
+                    : "#1e293b"
               }}
             >
-              {m.text}
+              {msg.text}
             </div>
+
           ))}
+
         </div>
 
-        {/* INPUT */}
+        {/* BOTTOM */}
+
         <div style={styles.bottom}>
 
+          <button
+            onClick={startVoice}
+            style={{
+              ...styles.mic,
+              background:
+                listening
+                  ? "#dc2626"
+                  : "#2563eb"
+            }}
+          >
+            🎤
+          </button>
+
           <input
-            style={styles.input}
             value={input}
-            onChange={(e)=>setInput(e.target.value)}
-            onKeyDown={(e)=> e.key==="Enter" && send()}
-            placeholder="Say something..."
+            onChange={(e) =>
+              setInput(e.target.value)
+            }
+            onKeyDown={handleKey}
+            placeholder="Message MOTI..."
+            style={styles.chatInput}
           />
 
-          <button style={styles.send} onClick={()=>send()}>
-            ✨
+          <button
+            onClick={() => send()}
+            style={styles.send}
+          >
+            Send
           </button>
 
         </div>
@@ -266,27 +479,63 @@ export default function App() {
       </div>
 
     </div>
+
   );
+
 }
 
-// ================= CUTE UI DESIGN =================
+// ================= STYLES =================
+
 const styles = {
 
-  app: {
+  container: {
     display: "flex",
     height: "100vh",
-    background: "linear-gradient(135deg,#0f0c29,#302b63,#24243e)",
-    color: "#fff",
-    fontFamily: "sans-serif"
+    background: "#0f172a",
+    color: "white",
+    fontFamily: "Arial"
   },
 
   sidebar: {
-    width: 260,
-    background: "rgba(0,0,0,0.3)",
-    backdropFilter: "blur(10px)",
-    padding: 10,
+    width: "250px",
+    background: "#111827",
+    padding: "15px",
     display: "flex",
     flexDirection: "column"
+  },
+
+  history: {
+    marginTop: "20px",
+    overflowY: "auto"
+  },
+
+  chatItem: {
+    padding: "10px",
+    background: "#1e293b",
+    borderRadius: "10px",
+    marginBottom: "10px",
+    cursor: "pointer"
+  },
+
+  newChat: {
+    padding: "12px",
+    border: "none",
+    borderRadius: "10px",
+    cursor: "pointer",
+    background: "#2563eb",
+    color: "white",
+    fontWeight: "bold"
+  },
+
+  logout: {
+    padding: "12px",
+    border: "none",
+    borderRadius: "10px",
+    cursor: "pointer",
+    background: "#dc2626",
+    color: "white",
+    fontWeight: "bold",
+    marginTop: "10px"
   },
 
   main: {
@@ -295,115 +544,90 @@ const styles = {
     flexDirection: "column"
   },
 
-  header: {
-    padding: 12,
-    textAlign: "center",
-    fontSize: 18,
-    fontWeight: "bold"
-  },
-
-  chat: {
+  messages: {
     flex: 1,
-    padding: 15,
     overflowY: "auto",
+    padding: "20px",
     display: "flex",
     flexDirection: "column",
-    gap: 10
+    gap: "10px"
   },
 
-  msg: {
-    padding: 12,
-    borderRadius: 15,
+  message: {
     maxWidth: "70%",
-    color: "white",
-    backdropFilter: "blur(10px)"
+    padding: "12px",
+    borderRadius: "12px"
   },
 
   bottom: {
     display: "flex",
-    padding: 10,
-    gap: 8
+    padding: "15px",
+    borderTop: "1px solid #1e293b"
   },
 
-  input: {
+  chatInput: {
     flex: 1,
-    padding: 12,
-    borderRadius: 20,
+    padding: "14px",
+    borderRadius: "10px",
     border: "none",
-    outline: "none"
+    outline: "none",
+    fontSize: "16px"
   },
 
   send: {
-    padding: "10px 14px",
-    borderRadius: 20,
+    marginLeft: "10px",
+    padding: "14px 20px",
     border: "none",
-    background: "#ff4ecd",
-    color: "white"
-  },
-
-  newChat: {
-    padding: 10,
-    background: "#ff4ecd",
-    border: "none",
-    borderRadius: 10,
-    marginBottom: 10
-  },
-
-  history: {
-    flex: 1,
-    overflowY: "auto"
-  },
-
-  chatItem: {
-    padding: 10,
-    background: "rgba(255,255,255,0.1)",
-    marginBottom: 5,
-    borderRadius: 10,
+    borderRadius: "10px",
+    background: "#2563eb",
+    color: "white",
     cursor: "pointer"
   },
 
-  logout: {
-    padding: 10,
-    background: "red",
+  mic: {
+    width: "50px",
     border: "none",
-    borderRadius: 10,
-    color: "white"
+    borderRadius: "10px",
+    color: "white",
+    cursor: "pointer",
+    marginRight: "10px",
+    fontSize: "20px"
   },
 
-  loginWrap: {
+  loginPage: {
     height: "100vh",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    background: "linear-gradient(135deg,#0f0c29,#302b63,#24243e)"
+    background: "#0f172a"
   },
 
-  loginCard: {
-    width: 260,
-    padding: 20,
-    borderRadius: 15,
-    background: "rgba(255,255,255,0.1)",
-    backdropFilter: "blur(10px)",
+  loginBox: {
+    width: "320px",
+    background: "#111827",
+    padding: "30px",
+    borderRadius: "20px",
     display: "flex",
     flexDirection: "column",
-    gap: 10
-  },
-
-  inputSmall: {
-    padding: 10,
-    borderRadius: 10,
-    border: "none"
-  },
-
-  btn: {
-    padding: 10,
-    borderRadius: 10,
-    border: "none",
-    background: "#ff4ecd",
+    gap: "15px",
     color: "white"
   },
 
-  title: {
-    textAlign: "center"
+  input: {
+    padding: "14px",
+    borderRadius: "10px",
+    border: "none",
+    outline: "none"
+  },
+
+  button: {
+    padding: "14px",
+    borderRadius: "10px",
+    border: "none",
+    background: "#2563eb",
+    color: "white",
+    cursor: "pointer",
+    fontWeight: "bold"
   }
+
 };
