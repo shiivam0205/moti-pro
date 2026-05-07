@@ -1,58 +1,76 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 
-function App() {
+export default function App() {
   const API = "https://moti-pro07.onrender.com";
 
+  const [userId, setUserId] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [userId, setUserId] = useState("");
+
   const [chat, setChat] = useState([]);
   const [input, setInput] = useState("");
-  const [status, setStatus] = useState("idle");
-  const [typing, setTyping] = useState(false);
+  const [status, setStatus] = useState("Idle");
+  const [loading, setLoading] = useState(false);
 
   const recognitionRef = useRef(null);
 
-  // ---------------- INIT ----------------
+  // ---------------- AUTO LOGIN ----------------
   useEffect(() => {
-  const savedUser = localStorage.getItem("moti_user");
+    const savedUser = localStorage.getItem("moti_user");
 
-  if (savedUser) {
-    setUserId(savedUser);
-    loadHistory(savedUser);
-  }
+    if (savedUser) {
+      setUserId(savedUser);
+      loadHistory(savedUser);
+    }
 
-  initVoiceRecognition();
-}, []);
+    initVoice();
+  }, []);
 
-  // ---------------- LOAD HISTORY ----------------
+  // ---------------- LOAD CHAT HISTORY ----------------
   const loadHistory = async (uid) => {
     try {
       const res = await axios.get(`${API}/history/${uid}`);
-      const formatted = res.data.history.map((m) => ({
-        role: m[0],
-        text: m[1]
+
+      const history = res.data.history.map((msg) => ({
+        role: msg[0],
+        text: msg[1]
       }));
-      setChat(formatted);
-    } catch (e) {
-      console.log(e);
+
+      setChat(history);
+    } catch (err) {
+      console.log(err);
     }
   };
 
   // ---------------- LOGIN ----------------
   const login = async () => {
+    if (!username || !password) {
+      alert("Enter username and password");
+      return;
+    }
+
     try {
       const res = await axios.post(`${API}/login`, {
-        username: username,
-        password: password
+        username,
+        password
       });
 
       localStorage.setItem("moti_user", res.data.user_id);
+
       setUserId(res.data.user_id);
-    } catch (e) {
+
+      loadHistory(res.data.user_id);
+    } catch (err) {
       alert("Login failed");
     }
+  };
+
+  // ---------------- LOGOUT ----------------
+  const logout = () => {
+    localStorage.removeItem("moti_user");
+    setUserId("");
+    setChat([]);
   };
 
   // ---------------- SPEAK ----------------
@@ -60,102 +78,111 @@ function App() {
     window.speechSynthesis.cancel();
 
     const utter = new SpeechSynthesisUtterance(text);
+
     utter.lang = "en-US";
     utter.rate = 1;
     utter.pitch = 1;
 
-    utter.onstart = () => setStatus("speaking");
-    utter.onend = () => setStatus("idle");
+    utter.onstart = () => setStatus("Speaking");
+    utter.onend = () => setStatus("Idle");
 
     window.speechSynthesis.speak(utter);
   };
 
-  // ---------------- SEND CHAT ----------------
-  const sendMessage = async (customText = null) => {
-    const msg = customText || input;
-    if (!msg.trim()) return;
-
-    window.speechSynthesis.cancel();
-
-    setChat((prev) => [...prev, { role: "user", text: msg }]);
-    setTyping(true);
-    setStatus("thinking");
-
-    try {
-      const res = await axios.post(`${API}/chat`, {
-        user_id: userId,
-        message: msg
-      });
-
-      setTyping(false);
-
-      const reply = res.data.reply;
-
-      setChat((prev) => [...prev, { role: "assistant", text: reply }]);
-      speak(reply);
-
-    } catch (e) {
-      setTyping(false);
-      setChat((prev) => [...prev, { role: "assistant", text: "Server error." }]);
-      setStatus("idle");
-    }
-
-    setInput("");
-  };
-
-  // ---------------- VOICE RECOGNITION ----------------
-  const initVoiceRecognition = () => {
+  // ---------------- VOICE INPUT ----------------
+  const initVoice = () => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) return;
 
-    const recog = new SpeechRecognition();
-    recog.lang = "en-IN";
-    recog.continuous = false;
+    const recognition = new SpeechRecognition();
 
-    recog.onstart = () => {
+    recognition.lang = "en-IN";
+    recognition.continuous = false;
+
+    recognition.onstart = () => {
+      setStatus("Listening");
       window.speechSynthesis.cancel();
-      setStatus("listening");
     };
 
-    recog.onend = () => {
-      if (status === "listening") setStatus("idle");
+    recognition.onend = () => {
+      setStatus("Idle");
     };
 
-    recog.onresult = (event) => {
-      const spoken = event.results[0][0].transcript;
-      sendMessage(spoken);
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      sendMessage(transcript);
     };
 
-    recognitionRef.current = recog;
+    recognitionRef.current = recognition;
   };
 
   const startListening = () => {
-    recognitionRef.current?.start();
+    if (recognitionRef.current) {
+      recognitionRef.current.start();
+    }
   };
 
-  // ---------------- BRAIN ANIMATION ----------------
-  const brainColor =
-    status === "listening"
-      ? "#00ffd5"
-      : status === "thinking"
-      ? "#ffcc00"
-      : status === "speaking"
-      ? "#ff00aa"
-      : "#6c63ff";
+  // ---------------- SEND MESSAGE ----------------
+  const sendMessage = async (customMessage = null) => {
+    const text = customMessage || input;
+
+    if (!text.trim()) return;
+
+    const userMessage = {
+      role: "user",
+      text
+    };
+
+    setChat((prev) => [...prev, userMessage]);
+
+    setInput("");
+    setLoading(true);
+    setStatus("Thinking");
+
+    try {
+      const res = await axios.post(`${API}/chat`, {
+        user_id: userId,
+        message: text
+      });
+
+      const botReply = {
+        role: "assistant",
+        text: res.data.reply
+      };
+
+      setChat((prev) => [...prev, botReply]);
+
+      speak(res.data.reply);
+
+    } catch (err) {
+      setChat((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text: "Server error."
+        }
+      ]);
+    }
+
+    setLoading(false);
+    setStatus("Idle");
+  };
 
   // ---------------- LOGIN PAGE ----------------
   if (!userId) {
     return (
-      <div style={styles.loginWrap}>
-        <div style={styles.loginBox}>
-          <div style={{ ...styles.brain, background: brainColor }}></div>
-          <h1 style={styles.logo}>MOTI AI</h1>
+      <div style={styles.loginPage}>
+        <div style={styles.loginCard}>
+          <div style={styles.logoGlow}></div>
+
+          <h1 style={styles.title}>MOTI AI</h1>
 
           <input
             style={styles.input}
             placeholder="Username"
+            value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
 
@@ -163,10 +190,11 @@ function App() {
             style={styles.input}
             type="password"
             placeholder="Password"
+            value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
 
-          <button style={styles.button} onClick={login}>
+          <button style={styles.loginBtn} onClick={login}>
             Enter Assistant
           </button>
         </div>
@@ -174,46 +202,71 @@ function App() {
     );
   }
 
-  // ---------------- MAIN UI ----------------
+  // ---------------- MAIN CHAT UI ----------------
   return (
     <div style={styles.container}>
+      {/* SIDEBAR */}
       <div style={styles.sidebar}>
         <h2>MOTI</h2>
+
         <p>Premium AI Assistant</p>
+
         <p>Status: {status}</p>
+
+        <button style={styles.logoutBtn} onClick={logout}>
+          Logout
+        </button>
       </div>
 
+      {/* MAIN */}
       <div style={styles.main}>
-        <div style={{ ...styles.brain, background: brainColor }}></div>
+        <div style={styles.aiOrb}></div>
 
-        <div style={styles.chatBox}>
-          {chat.map((m, i) => (
+        <div style={styles.chatArea}>
+          {chat.map((msg, index) => (
             <div
-              key={i}
+              key={index}
               style={
-                m.role === "user" ? styles.userMsg : styles.botMsg
+                msg.role === "user"
+                  ? styles.userBubble
+                  : styles.botBubble
               }
             >
-              {m.text}
+              {msg.text}
             </div>
           ))}
 
-          {typing && <div style={styles.botMsg}>MOTI is thinking...</div>}
+          {loading && (
+            <div style={styles.botBubble}>
+              MOTI is thinking...
+            </div>
+          )}
         </div>
 
-        <div style={styles.bottom}>
+        <div style={styles.bottomBar}>
           <input
-            style={styles.msgInput}
+            style={styles.chatInput}
+            placeholder="Ask anything..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask anything..."
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                sendMessage();
+              }
+            }}
           />
 
-          <button style={styles.sendBtn} onClick={() => sendMessage()}>
+          <button
+            style={styles.sendBtn}
+            onClick={() => sendMessage()}
+          >
             Send
           </button>
 
-          <button style={styles.micBtn} onClick={startListening}>
+          <button
+            style={styles.micBtn}
+            onClick={startListening}
+          >
             🎤
           </button>
         </div>
@@ -222,127 +275,155 @@ function App() {
   );
 }
 
+// ---------------- STYLES ----------------
 const styles = {
-  loginWrap: {
-    background: "#070710",
+  loginPage: {
     height: "100vh",
+    background: "#05050d",
     display: "flex",
     justifyContent: "center",
-    alignItems: "center",
-    color: "white"
+    alignItems: "center"
   },
-  loginBox: {
-    width: "320px",
+
+  loginCard: {
+    width: "340px",
+    background: "rgba(255,255,255,0.05)",
     padding: "30px",
     borderRadius: "20px",
-    background: "rgba(255,255,255,0.06)",
     backdropFilter: "blur(20px)",
-    textAlign: "center",
-    boxShadow: "0 0 30px rgba(108,99,255,0.4)"
+    boxShadow: "0 0 40px rgba(108,99,255,0.5)",
+    textAlign: "center"
   },
-  logo: {
+
+  logoGlow: {
+    width: "90px",
+    height: "90px",
+    borderRadius: "50%",
+    margin: "auto",
+    marginBottom: "20px",
+    background: "#6c63ff",
+    boxShadow: "0 0 40px #6c63ff"
+  },
+
+  title: {
+    color: "white",
     marginBottom: "20px"
   },
+
   input: {
     width: "100%",
     padding: "14px",
-    margin: "10px 0",
+    marginBottom: "15px",
     borderRadius: "12px",
     border: "none",
     outline: "none"
   },
-  button: {
+
+  loginBtn: {
     width: "100%",
     padding: "14px",
-    marginTop: "15px",
-    border: "none",
     borderRadius: "12px",
+    border: "none",
     background: "#6c63ff",
     color: "white",
-    fontWeight: "bold"
+    fontWeight: "bold",
+    cursor: "pointer"
   },
+
   container: {
     display: "flex",
     height: "100vh",
     background: "#05050d",
     color: "white"
   },
+
   sidebar: {
-    width: "220px",
-    padding: "20px",
+    width: "240px",
     background: "rgba(255,255,255,0.04)",
-    borderRight: "1px solid rgba(255,255,255,0.08)"
-  }, 
-<button
-  onClick={() => {
-    localStorage.removeItem("moti_user");
-    setUserId("");
-    setChat([]);
-  }}
->
-  Logout
-</button>
+    borderRight: "1px solid rgba(255,255,255,0.08)",
+    padding: "20px"
+  },
+
+  logoutBtn: {
+    marginTop: "20px",
+    width: "100%",
+    padding: "12px",
+    borderRadius: "10px",
+    border: "none",
+    background: "#ff4444",
+    color: "white",
+    cursor: "pointer"
+  },
 
   main: {
     flex: 1,
-    padding: "20px",
     display: "flex",
     flexDirection: "column",
-    alignItems: "center"
+    alignItems: "center",
+    padding: "20px"
   },
-  brain: {
-    width: "100px",
-    height: "100px",
+
+  aiOrb: {
+    width: "110px",
+    height: "110px",
     borderRadius: "50%",
-    boxShadow: "0 0 50px currentColor",
+    background: "#6c63ff",
+    boxShadow: "0 0 50px #6c63ff",
     marginBottom: "20px"
   },
-  chatBox: {
+
+  chatArea: {
     flex: 1,
     width: "100%",
     overflowY: "auto",
     padding: "10px"
   },
-  userMsg: {
-    alignSelf: "flex-end",
+
+  userBubble: {
     background: "#6c63ff",
     padding: "12px",
-    borderRadius: "15px",
-    margin: "8px",
-    maxWidth: "70%"
+    borderRadius: "16px",
+    marginBottom: "12px",
+    maxWidth: "70%",
+    marginLeft: "auto"
   },
-  botMsg: {
-    alignSelf: "flex-start",
+
+  botBubble: {
     background: "#151525",
     padding: "12px",
-    borderRadius: "15px",
-    margin: "8px",
+    borderRadius: "16px",
+    marginBottom: "12px",
     maxWidth: "70%"
   },
-  bottom: {
-    display: "flex",
+
+  bottomBar: {
     width: "100%",
+    display: "flex",
     gap: "10px"
   },
-  msgInput: {
+
+  chatInput: {
     flex: 1,
     padding: "14px",
     borderRadius: "12px",
-    border: "none"
+    border: "none",
+    outline: "none"
   },
+
   sendBtn: {
     padding: "14px 20px",
     borderRadius: "12px",
     border: "none",
     background: "#6c63ff",
-    color: "white"
+    color: "white",
+    cursor: "pointer"
   },
+
   micBtn: {
     padding: "14px 20px",
     borderRadius: "12px",
     border: "none",
-    background: "#00ffd5"
+    background: "#00ffd5",
+    cursor: "pointer"
   }
 };
-
-export default App;
