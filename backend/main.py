@@ -325,17 +325,22 @@ def chat(data: ChatData):
         lower = data.message.lower()
 
         search_keywords = [
-            "latest",
-            "today",
-            "news",
-            "weather",
-            "price",
-            "search",
-            "internet",
-            "who is",
-            "what is",
-            "current"
-        ]
+    "weather",
+    "today",
+    "latest",
+    "news",
+    "price",
+    "current",
+    "temperature",
+    "forecast",
+    "bitcoin",
+    "stock",
+    "search",
+    "internet",
+    "who is",
+    "what is",
+    "live"
+]
 
         internet_context = ""
 
@@ -346,10 +351,14 @@ def chat(data: ChatData):
 
             search_query = data.message
 
-if "weather" in lower:
-    search_query = f"{data.message} in India today"
+if "weather" in lower or "temperature" in lower:
+    search_query = "current weather today India"
 
-internet_context = internet_search(search_query)
+if "bitcoin" in lower:
+    search_query = "bitcoin live price today"
+
+if "news" in lower:
+    search_query = "latest breaking news today"
 
         # SYSTEM PROMPT
         messages = [
@@ -358,16 +367,40 @@ internet_context = internet_search(search_query)
                 "content": f"""
 You are MOTI.
 
-You are an ultra premium emotional AI assistant.
+You are an ultra premium realtime AI assistant.
 
-User name:
+User:
 {username}
 
-Permanent Memory:
+Memory:
 {memory_context}
 
-Internet Search Results:
+Realtime Internet Results:
 {internet_context}
+
+CRITICAL RULES:
+
+1. If Realtime Internet Results exist,
+ALWAYS use them in your answer.
+
+2. NEVER say:
+- "I don't have realtime access"
+- "I cannot access current weather"
+- "I am offline"
+
+3. Internet results are REALTIME DATA.
+
+4. If weather/news/price/current events are asked,
+you MUST answer directly using Internet Results.
+
+5. Speak naturally like ChatGPT Premium.
+
+6. Support English and Hindi naturally.
+
+7. Be conversational and intelligent.
+
+8. Never sound robotic.
+"""
 
 Rules:
 - Speak naturally like ChatGPT Premium
