@@ -126,49 +126,78 @@ export default function App() {
 
   // ---------------- SEND MESSAGE ----------------
   const sendMessage = async (customMessage = null) => {
-    const text = customMessage || input;
+  const text = customMessage || input;
 
-    if (!text.trim()) return;
+  if (!text.trim()) return;
 
-    const userMessage = {
-      role: "user",
-      text
-    };
+  const userMessage = {
+    role: "user",
+    text
+  };
 
-    setChat((prev) => [...prev, userMessage]);
+  setChat((prev) => [...prev, userMessage]);
 
-    setInput("");
-    setLoading(true);
-    setStatus("Thinking");
+  setInput("");
+  setLoading(true);
+  setStatus("Thinking");
 
-    try {
-      const res = await axios.post(`${API}/chat`, {
-        user_id: userId,
-        message: text
+  try {
+    const res = await axios.post(`${API}/chat`, {
+      user_id: userId,
+      message: text
+    });
+
+    const fullReply = res.data.reply;
+
+    let currentText = "";
+
+    const botIndex = chat.length + 1;
+
+    setChat((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        text: ""
+      }
+    ]);
+
+    let i = 0;
+
+    const interval = setInterval(() => {
+      currentText += fullReply[i];
+
+      setChat((prev) => {
+        const updated = [...prev];
+
+        updated[botIndex] = {
+          role: "assistant",
+          text: currentText
+        };
+
+        return updated;
       });
 
-      const botReply = {
+      i++;
+
+      if (i >= fullReply.length) {
+        clearInterval(interval);
+        speak(fullReply);
+      }
+    }, 18);
+
+  } catch (err) {
+    setChat((prev) => [
+      ...prev,
+      {
         role: "assistant",
-        text: res.data.reply
-      };
+        text: "Server error."
+      }
+    ]);
+  }
 
-      setChat((prev) => [...prev, botReply]);
-
-      speak(res.data.reply);
-
-    } catch (err) {
-      setChat((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: "Server error."
-        }
-      ]);
-    }
-
-    setLoading(false);
-    setStatus("Idle");
-  };
+  setLoading(false);
+  setStatus("Idle");
+};
 
   // ---------------- LOGIN PAGE ----------------
   if (!userId) {
