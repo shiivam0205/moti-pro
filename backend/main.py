@@ -8,6 +8,7 @@ from groq import Groq
 
 app = FastAPI()
 
+# ================= CORS =================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -53,7 +54,7 @@ class ChatData(BaseModel):
 # ================= ROOT =================
 @app.get("/")
 def root():
-    return {"status": "MOTI AI PRO MAX ONLINE"}
+    return {"status": "MOTI ULTRA AI ONLINE"}
 
 # ================= LOGIN =================
 @app.post("/login")
@@ -84,35 +85,39 @@ def login(data: LoginData):
 @app.post("/chat")
 def chat(data: ChatData):
 
+    # save user message
     cur.execute(
         "INSERT INTO chats VALUES (?, ?, ?)",
         (data.user_id, "user", data.message)
     )
     conn.commit()
 
+    # get history (safe limit to avoid crash)
     cur.execute(
-        "SELECT role, message FROM chats WHERE user_id=?",
+        "SELECT role, message FROM chats WHERE user_id=? ORDER BY rowid DESC LIMIT 20",
         (data.user_id,)
     )
 
-    history = cur.fetchall()
+    history = cur.fetchall()[::-1]
 
+    # ================= SYSTEM PROMPT =================
     messages = [
         {
             "role": "system",
             "content": """
-You are MOTI AI PRO MAX.
+You are MOTI ULTRA AI (ChatGPT clone).
 
-IMPORTANT:
-- Detect user language automatically
-- Reply in SAME language as user
-- Be natural like human conversation
-- Support all world languages
+RULES:
+- Detect language automatically
+- Respond in same language
+- Be natural, human, smart
 - Never say you are offline
+- Keep answers clean and helpful
 """
         }
     ]
 
+    # history
     for r, m in history:
         messages.append({
             "role": "user" if r == "user" else "assistant",
@@ -124,6 +129,7 @@ IMPORTANT:
         "content": data.message
     })
 
+    # AI RESPONSE
     res = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=messages,
@@ -133,11 +139,11 @@ IMPORTANT:
 
     reply = res.choices[0].message.content
 
+    # save AI
     cur.execute(
         "INSERT INTO chats VALUES (?, ?, ?)",
         (data.user_id, "assistant", reply)
     )
-
     conn.commit()
 
     return {"reply": reply}
