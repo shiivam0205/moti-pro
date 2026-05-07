@@ -18,17 +18,11 @@ app.add_middleware(
 )
 
 # ---------------- DATABASE ----------------
-# ---------------- DATABASE ----------------
 conn = sqlite3.connect("moti.db", check_same_thread=False)
 cur = conn.cursor()
 
-# RESET OLD BROKEN TABLES
-cur.execute("DROP TABLE IF EXISTS users")
-cur.execute("DROP TABLE IF EXISTS chats")
-
-# CREATE NEW TABLES
 cur.execute("""
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     user_id TEXT,
     username TEXT,
     password TEXT
@@ -36,7 +30,7 @@ CREATE TABLE users (
 """)
 
 cur.execute("""
-CREATE TABLE chats (
+CREATE TABLE IF NOT EXISTS chats (
     user_id TEXT,
     role TEXT,
     message TEXT

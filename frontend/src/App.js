@@ -6,7 +6,7 @@ function App() {
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [userId, setUserId] = useState(localStorage.getItem("moti_user") || "");
+  const [userId, setUserId] = useState("");
   const [chat, setChat] = useState([]);
   const [input, setInput] = useState("");
   const [status, setStatus] = useState("idle");
@@ -16,9 +16,15 @@ function App() {
 
   // ---------------- INIT ----------------
   useEffect(() => {
-    if (userId) loadHistory(userId);
-    initVoiceRecognition();
-  }, [userId]);
+  const savedUser = localStorage.getItem("moti_user");
+
+  if (savedUser) {
+    setUserId(savedUser);
+    loadHistory(savedUser);
+  }
+
+  initVoiceRecognition();
+}, []);
 
   // ---------------- LOAD HISTORY ----------------
   const loadHistory = async (uid) => {
@@ -266,7 +272,17 @@ const styles = {
     padding: "20px",
     background: "rgba(255,255,255,0.04)",
     borderRight: "1px solid rgba(255,255,255,0.08)"
-  },
+  }, 
+<button
+  onClick={() => {
+    localStorage.removeItem("moti_user");
+    setUserId("");
+    setChat([]);
+  }}
+>
+  Logout
+</button>
+
   main: {
     flex: 1,
     padding: "20px",
