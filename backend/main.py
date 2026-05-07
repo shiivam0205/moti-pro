@@ -3,7 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import sqlite3
 import uuid
-import random
+import os
+from groq import Groq
 
 app = FastAPI()
 
@@ -37,6 +38,9 @@ CREATE TABLE IF NOT EXISTS chats (
 """)
 
 conn.commit()
+
+# ---------------- GROQ ----------------
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # ---------------- MODELS ----------------
 class LoginData(BaseModel):
@@ -74,7 +78,6 @@ def login(data: LoginData):
         conn.commit()
 
         return {"user_id": uid}
-
     except Exception as e:
         return {"error": str(e)}
 
@@ -83,73 +86,14 @@ def login(data: LoginData):
 def history(user_id: str):
     try:
         cur.execute(
-            "SELECT role, message FROM chats WHERE user_id=?",
+            "SELECT role, message FROM chats WHERE user_id=? ORDER BY rowid ASC",
             (user_id,)
         )
-        rows = cur.fetchall()
-        return {"history": rows}
-    except Exception as e:
+        return {"history": cur.fetchall()}
+    except:
         return {"history": []}
 
-# ---------------- AI RESPONSE ENGINE ----------------
-def generate_ai_reply(user_id, message):
-    text = message.lower()
-
-    cur.execute("SELECT username FROM users WHERE user_id=?", (user_id,))
-    user = cur.fetchone()
-    username = user[0] if user else "friend"
-
-    cur.execute(
-        "SELECT role, message FROM chats WHERE user_id=? ORDER BY rowid DESC LIMIT 6",
-        (user_id,)
-    )
-    memory = cur.fetchall()
-
-    greetings = [
-        f"Hello {username}, I'm here with you.",
-        f"Hi {username}, tell me what's on your mind.",
-        f"Hey {username}, MOTI is listening."
-    ]
-
-    smart_random = [
-        "Interesting... tell me more.",
-        "I understand what you're saying.",
-        "That's actually worth discussing deeper.",
-        "Hmm, I can help you with that.",
-        "Let me think about that with you."
-    ]
-
-    if "hello" in text or "hi" in text:
-        return random.choice(greetings)
-
-    if "my name" in text:
-        return f"Your registered name in my memory is {username}."
-
-    if "who are you" in text:
-        return "I am MOTI, your premium intelligent emotional AI assistant."
-
-    if "how are you" in text:
-        return random.choice([
-            "I'm functioning perfectly and fully focused on you.",
-            "Feeling active and ready to help.",
-            "All systems stable. I'm doing great."
-        ])
-
-    if "love" in text:
-        return "Love is a powerful emotion. Are we talking about someone special?"
-
-    if "sad" in text or "depressed" in text:
-        return "I can feel some heaviness in your words. Want to talk about what's causing it?"
-
-    if "bye" in text:
-        return f"I'll be here whenever you need me, {username}."
-
-    if len(memory) > 4:
-        return random.choice(smart_random) + " Also, I'm remembering our recent conversation."
-
-    return random.choice(smart_random)
-
-# ---------------- CHAT ----------------
+# ---------------- REAL AI CHAT ----------------
 @app.post("/chat")
 def chat(data: ChatData):
     try:
@@ -159,7 +103,43 @@ def chat(data: ChatData):
         )
         conn.commit()
 
-        reply = generate_ai_reply(data.user_id, data.message)
+        cur.execute("SELECT username FROM users WHERE user_id=?", (data.user_id,))
+        user = cur.fetchone()
+        username = user[0] if user else "friend"
+
+        cur.execute(
+            "SELECT role, message FROM chats WHERE user_id=? ORDER BY rowid DESC LIMIT 8",
+            (data.user_id,)
+        )
+        history_rows = cur.fetchall()
+        history_rows.reverse()
+
+        messages = [
+            {
+                "role": "system",
+                "content": f"""
+You are MOTI, a premium ultra smart emotional AI assistant.
+Talk naturally like ChatGPT premium.
+Be warm, intelligent, expressive, and humanlike.
+User name is {username}.
+Do not repeat robotic phrases.
+Keep replies conversational.
+"""
+            }
+        ]
+
+        for role, msg in history_rows:
+            r = "assistant" if role == "assistant" else "user"
+            messages.append({"role": r, "content": msg})
+
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            temperature=0.9,
+            max_tokens=300
+        )
+
+        reply = completion.choices[0].message.content
 
         cur.execute(
             "INSERT INTO chats VALUES (?, ?, ?)",
@@ -170,4 +150,4 @@ def chat(data: ChatData):
         return {"reply": reply}
 
     except Exception as e:
-        return {"reply": "Server error: " + str(e)}
+        return {"reply": "AI server error: " + str(e)}
