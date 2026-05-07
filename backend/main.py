@@ -1,15 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from groq import Groq
 import sqlite3
 import uuid
 import os
-import requests
+from groq import Groq
 
-# =========================
-# APP
-# =========================
 app = FastAPI()
 
 app.add_middleware(
@@ -20,9 +16,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# =========================
-# DB
-# =========================
+# ================= DB =================
 conn = sqlite3.connect("moti.db", check_same_thread=False)
 cur = conn.cursor()
 
@@ -42,23 +36,12 @@ CREATE TABLE IF NOT EXISTS chats (
 )
 """)
 
-cur.execute("""
-CREATE TABLE IF NOT EXISTS memory (
-    user_id TEXT,
-    memory_text TEXT
-)
-""")
-
 conn.commit()
 
-# =========================
-# AI CLIENT
-# =========================
+# ================= AI =================
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# =========================
-# MODELS
-# =========================
+# ================= MODELS =================
 class LoginData(BaseModel):
     username: str
     password: str
@@ -67,16 +50,12 @@ class ChatData(BaseModel):
     user_id: str
     message: str
 
-# =========================
-# ROOT
-# =========================
+# ================= ROOT =================
 @app.get("/")
 def root():
-    return {"status": "MOTI AI PRO RUNNING"}
+    return {"status": "MOTI AI PRO MAX ONLINE"}
 
-# =========================
-# LOGIN
-# =========================
+# ================= LOGIN =================
 @app.post("/login")
 def login(data: LoginData):
 
@@ -90,157 +69,75 @@ def login(data: LoginData):
     if user:
         return {"user_id": user[0]}
 
-    new_id = str(uuid.uuid4())
+    uid = str(uuid.uuid4())
 
     cur.execute(
         "INSERT INTO users VALUES (?, ?, ?)",
-        (new_id, data.username, data.password)
+        (uid, data.username, data.password)
     )
 
     conn.commit()
 
-    return {"user_id": new_id}
+    return {"user_id": uid}
 
-# =========================
-# MEMORY
-# =========================
-def save_memory(user_id, text):
-
-    if any(k in text.lower() for k in ["remember", "my name", "i like", "i love"]):
-
-        cur.execute(
-            "INSERT INTO memory VALUES (?, ?)",
-            (user_id, text)
-        )
-
-        conn.commit()
-
-def get_memory(user_id):
-
-    cur.execute(
-        "SELECT memory_text FROM memory WHERE user_id=? ORDER BY rowid DESC LIMIT 10",
-        (user_id,)
-    )
-
-    return "\n".join([r[0] for r in cur.fetchall()])
-
-# =========================
-# PRO WEATHER SYSTEM (NO API)
-# =========================
-def get_weather_pro(location: str):
-
-    try:
-
-        # smart cleanup
-        location = location.replace("weather", "").strip()
-        if location == "":
-            location = "India"
-
-        url = f"https://wttr.in/{location}?format=3"
-
-        res = requests.get(url, timeout=5)
-
-        return f"🌤 Live Weather: {res.text}"
-
-    except:
-        return "🌤 Weather service unavailable"
-
-# =========================
-# CHAT
-# =========================
+# ================= CHAT =================
 @app.post("/chat")
 def chat(data: ChatData):
 
-    # save user msg
     cur.execute(
         "INSERT INTO chats VALUES (?, ?, ?)",
         (data.user_id, "user", data.message)
     )
     conn.commit()
 
-    save_memory(data.user_id, data.message)
-
-    # history
     cur.execute(
-        "SELECT role, message FROM chats WHERE user_id=? ORDER BY rowid ASC",
+        "SELECT role, message FROM chats WHERE user_id=?",
         (data.user_id,)
     )
 
     history = cur.fetchall()
 
-    memory = get_memory(data.user_id)
-
-    msg = data.message.lower()
-
-    # =========================
-    # WEATHER DETECTION (PRO)
-    # =========================
-    weather_data = ""
-
-    if "weather" in msg or "temperature" in msg:
-
-        weather_data = get_weather_pro(data.message)
-
-    # =========================
-    # BUILD PROMPT
-    # =========================
     messages = [
         {
             "role": "system",
             "content": """
-You are MOTI AI (ChatGPT-style assistant).
+You are MOTI AI PRO MAX.
 
-RULES:
-- Always respond naturally
-- Use weather data if provided
+IMPORTANT:
+- Detect user language automatically
+- Reply in SAME language as user
+- Be natural like human conversation
+- Support all world languages
 - Never say you are offline
-- Be helpful, short, smart
 """
         }
     ]
 
-    # history
-    for role, text in history:
+    for r, m in history:
         messages.append({
-            "role": "user" if role == "user" else "assistant",
-            "content": text
+            "role": "user" if r == "user" else "assistant",
+            "content": m
         })
 
-    # inject memory
-    if memory:
-        messages.append({
-            "role": "system",
-            "content": f"Memory:\n{memory}"
-        })
-
-    # inject weather (IMPORTANT)
-    if weather_data:
-        messages.append({
-            "role": "system",
-            "content": weather_data
-        })
-
-    # final user message
     messages.append({
         "role": "user",
         "content": data.message
     })
 
-    # AI RESPONSE
-    completion = client.chat.completions.create(
+    res = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=messages,
         temperature=0.8,
-        max_tokens=500
+        max_tokens=600
     )
 
-    reply = completion.choices[0].message.content
+    reply = res.choices[0].message.content
 
-    # save AI
     cur.execute(
         "INSERT INTO chats VALUES (?, ?, ?)",
         (data.user_id, "assistant", reply)
     )
+
     conn.commit()
 
     return {"reply": reply}

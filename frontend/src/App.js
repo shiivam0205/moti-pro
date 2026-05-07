@@ -6,128 +6,98 @@ export default function App() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
-  const [message, setMessage] = useState("");
+  const [msg, setMsg] = useState("");
   const [chat, setChat] = useState([]);
 
   const API = "https://moti-pro07.onrender.com";
 
-  // ======================
-  // LOGIN
-  // ======================
-  const handleLogin = async () => {
+  // ================= LOGIN =================
+  const login = async () => {
 
-    try {
+    const res = await fetch(`${API}/login`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ username, password })
+    });
 
-      const res = await fetch(`${API}/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username,
-          password
-        })
-      });
+    const data = await res.json();
 
-      const data = await res.json();
-
-      if (data.user_id) {
-        setUserId(data.user_id);
-      }
-
-    } catch (err) {
-      alert("Login error");
-    }
+    if (data.user_id) setUserId(data.user_id);
   };
 
-  // ======================
-  // SEND MESSAGE
-  // ======================
-  const sendMessage = async () => {
+  // ================= TEXT TO SPEECH =================
+  const speak = (text) => {
 
-    if (!message) return;
+    const speech = new SpeechSynthesisUtterance(text);
 
-    const newChat = [
-      ...chat,
-      { role: "user", text: message }
-    ];
+    speech.lang = "auto"; // browser auto language
+    speech.rate = 1;
 
-    setChat(newChat);
-
-    setMessage("");
-
-    try {
-
-      const res = await fetch(`${API}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: userId,
-          message: message
-        })
-      });
-
-      const data = await res.json();
-
-      setChat([
-        ...newChat,
-        { role: "ai", text: data.reply }
-      ]);
-
-    } catch (err) {
-
-      setChat([
-        ...newChat,
-        { role: "ai", text: "Server error" }
-      ]);
-
-    }
+    window.speechSynthesis.speak(speech);
   };
 
-  // ======================
-  // LOGIN SCREEN
-  // ======================
+  // ================= SEND MESSAGE =================
+  const send = async () => {
+
+    if (!msg) return;
+
+    const updated = [...chat, { role: "user", text: msg }];
+    setChat(updated);
+
+    const text = msg;
+    setMsg("");
+
+    const res = await fetch(`${API}/chat`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        user_id: userId,
+        message: text
+      })
+    });
+
+    const data = await res.json();
+
+    setChat([...updated, { role: "ai", text: data.reply }]);
+
+    // voice
+    speak(data.reply);
+  };
+
+  // ================= LOGIN UI =================
   if (!userId) {
-
     return (
-      <div style={styles.loginBox}>
-
-        <h1 style={{ color: "white" }}>MOTI AI Login</h1>
+      <div style={styles.login}>
+        <h2>MOTI AI Login</h2>
 
         <input
           style={styles.input}
-          placeholder="Username"
-          onChange={(e) => setUsername(e.target.value)}
+          placeholder="username"
+          onChange={(e)=>setUsername(e.target.value)}
         />
 
         <input
           style={styles.input}
-          placeholder="Password"
+          placeholder="password"
           type="password"
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={(e)=>setPassword(e.target.value)}
         />
 
-        <button style={styles.button} onClick={handleLogin}>
+        <button style={styles.btn} onClick={login}>
           Login
         </button>
-
       </div>
     );
   }
 
-  // ======================
-  // CHAT UI
-  // ======================
+  // ================= CHAT UI =================
   return (
-    <div style={styles.container}>
+    <div style={styles.page}>
 
-      {/* HEADER */}
-      <div style={styles.header}>
-        <h2>MOTI AI Chat</h2>
-      </div>
+      <div style={styles.header}>MOTI AI PRO MAX</div>
 
-      {/* CHAT BOX */}
-      <div style={styles.chatBox}>
-
-        {chat.map((c, i) => (
+      <div style={styles.chat}>
+        {chat.map((c,i)=>(
           <div
             key={i}
             style={{
@@ -139,68 +109,61 @@ export default function App() {
             {c.text}
           </div>
         ))}
-
       </div>
 
-      {/* INPUT */}
-      <div style={styles.inputBox}>
-
+      <div style={styles.bottom}>
         <input
           style={styles.input}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Ask MOTI..."
+          value={msg}
+          onChange={(e)=>setMsg(e.target.value)}
+          placeholder="Ask anything in any language..."
         />
 
-        <button style={styles.button} onClick={sendMessage}>
+        <button style={styles.btn} onClick={send}>
           Send
         </button>
-
       </div>
 
     </div>
   );
 }
 
-// ======================
-// STYLES
-// ======================
+// ================= STYLES (FIXED UI SIZE) =================
 const styles = {
 
-  container: {
-    backgroundColor: "#0f0f0f",
+  page: {
     height: "100vh",
     display: "flex",
     flexDirection: "column",
+    background: "#0f0f0f",
     color: "white"
   },
 
   header: {
-    padding: 15,
-    backgroundColor: "#111",
-    textAlign: "center"
+    padding: 10,
+    textAlign: "center",
+    background: "#111"
   },
 
-  chatBox: {
+  chat: {
     flex: 1,
     padding: 10,
     overflowY: "auto",
     display: "flex",
     flexDirection: "column",
-    gap: 10
+    gap: 8
   },
 
   msg: {
     padding: 10,
     borderRadius: 10,
-    maxWidth: "70%",
-    color: "white"
+    maxWidth: "70%"
   },
 
-  inputBox: {
+  bottom: {
     display: "flex",
     padding: 10,
-    backgroundColor: "#111"
+    background: "#111"
   },
 
   input: {
@@ -211,23 +174,23 @@ const styles = {
     outline: "none"
   },
 
-  button: {
+  btn: {
     marginLeft: 10,
     padding: "10px 15px",
-    backgroundColor: "#4a90e2",
+    background: "#4a90e2",
     border: "none",
     borderRadius: 8,
-    color: "white",
-    cursor: "pointer"
+    color: "white"
   },
 
-  loginBox: {
+  login: {
     height: "100vh",
-    backgroundColor: "#0f0f0f",
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
     alignItems: "center",
-    gap: 10
+    gap: 10,
+    background: "#0f0f0f",
+    color: "white"
   }
 };
