@@ -344,9 +344,12 @@ def chat(data: ChatData):
             for keyword in search_keywords
         ):
 
-            internet_context = internet_search(
-                data.message
-            )
+            search_query = data.message
+
+if "weather" in lower:
+    search_query = f"{data.message} in India today"
+
+internet_context = internet_search(search_query)
 
         # SYSTEM PROMPT
         messages = [
@@ -373,7 +376,13 @@ Rules:
 - Support Hindi and English
 - Be intelligent and helpful
 - Answer clearly and conversationally
-- Use internet data if available
+- - VERY IMPORTANT:
+If internet search results are available,
+you MUST answer using that realtime data.
+
+Never say you do not have realtime access.
+Never say you cannot access live weather/news.
+Always use the provided Internet Search Results.
 """
             }
         ]
