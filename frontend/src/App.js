@@ -240,7 +240,18 @@ export default function App() {
 
         <p>Premium AI Assistant</p>
 
-        <p>Status: {status}</p>
+        <p
+  style={{
+    color:
+      status === "Listening"
+        ? "#00ffd5"
+        : status === "Speaking"
+        ? "#ff66ff"
+        : "#9aa0ff"
+  }}
+>
+  Status: {status}
+</p>
 
         <button style={styles.logoutBtn} onClick={logout}>
           Logout
@@ -249,7 +260,17 @@ export default function App() {
 
       {/* MAIN */}
       <div style={styles.main}>
-        <div style={styles.aiOrb}></div>
+        <div
+  style={{
+    ...styles.aiOrb,
+    transform:
+      status === "Listening"
+        ? "scale(1.15)"
+        : status === "Speaking"
+        ? "scale(1.08)"
+        : "scale(1)"
+  }}
+></div>
 
         <div style={styles.chatArea}>
           {chat.map((msg, index) => (
@@ -393,13 +414,16 @@ const styles = {
   },
 
   aiOrb: {
-    width: "110px",
-    height: "110px",
-    borderRadius: "50%",
-    background: "#6c63ff",
-    boxShadow: "0 0 50px #6c63ff",
-    marginBottom: "20px"
-  },
+  width: "130px",
+  height: "130px",
+  borderRadius: "50%",
+  marginBottom: "20px",
+  background:
+    "radial-gradient(circle, #8f7bff 0%, #5b4dff 40%, #2d1eff 100%)",
+  boxShadow:
+    "0 0 20px #6c63ff, 0 0 60px #6c63ff, 0 0 100px #6c63ff",
+  animation: "pulse 2s infinite ease-in-out"
+},
 
   chatArea: {
     flex: 1,
