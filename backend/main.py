@@ -1,36 +1,37 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 import sqlite3
-import uuid
 import os
-from groq import Groq
 
-app = FastAPI()
+# ======================================================
+# APP
+# ======================================================
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = Flask(__name__)
+CORS(app)
 
-# ================= DB =================
-conn = sqlite3.connect("moti.db", check_same_thread=False)
-cur = conn.cursor()
+# ======================================================
+# DATABASE
+# ======================================================
 
-cur.execute("""
+DB_PATH = os.path.join(os.path.dirname(__file__), "moti.db")
+
+conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+c = conn.cursor()
+
+# USERS TABLE
+c.execute("""
 CREATE TABLE IF NOT EXISTS users (
-    user_id TEXT,
-    username TEXT,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
     password TEXT
 )
 """)
 
-cur.execute("""
+# CHATS TABLE
+c.execute("""
 CREATE TABLE IF NOT EXISTS chats (
-    chat_id TEXT,
+    id TEXT,
     user_id TEXT,
     role TEXT,
     message TEXT
@@ -39,122 +40,255 @@ CREATE TABLE IF NOT EXISTS chats (
 
 conn.commit()
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# ======================================================
+# HOME
+# ======================================================
 
-class Login(BaseModel):
-    username: str
-    password: str
+@app.route("/")
+def home():
+    return "MOTI AI Backend Running Successfully 🚀"
 
-class Chat(BaseModel):
-    user_id: str
-    chat_id: str
-    message: str
+# ======================================================
+# LOGIN
+# ======================================================
 
-# ================= ROOT =================
-@app.get("/")
-def root():
-    return {"status": "MOTI CHATGPT CLONE ACTIVE"}
+@app.route("/login", methods=["POST"])
+def login():
 
-# ================= LOGIN =================
-@app.post("/login")
-def login(data: Login):
+    try:
 
-    cur.execute(
-        "SELECT user_id FROM users WHERE username=? AND password=?",
-        (data.username, data.password)
-    )
+        data = request.json
 
-    user = cur.fetchone()
+        username = data.get("username")
+        password = data.get("password")
 
-    if user:
-        return {"user_id": user[0]}
+        if not username or not password:
+            return jsonify({
+                "error": "username and password required"
+            }), 400
 
-    uid = str(uuid.uuid4())
+        # CHECK EXISTING USER
+        c.execute(
+            "SELECT id, password FROM users WHERE username=?",
+            (username,)
+        )
 
-    cur.execute(
-        "INSERT INTO users VALUES (?, ?, ?)",
-        (uid, data.username, data.password)
-    )
+        user = c.fetchone()
 
-    conn.commit()
+        # USER EXISTS
+        if user:
 
-    return {"user_id": uid}
+            db_user_id = str(user[0])
+            db_password = user[1]
 
-# ================= CHAT HISTORY LIST =================
-@app.get("/history/{user_id}")
-def history(user_id: str):
+            # CORRECT PASSWORD
+            if db_password == password:
+                return jsonify({
+                    "user_id": db_user_id
+                })
 
-    cur.execute(
-        "SELECT DISTINCT chat_id FROM chats WHERE user_id=?",
-        (user_id,)
-    )
+            # WRONG PASSWORD
+            return jsonify({
+                "error": "wrong password"
+            }), 401
 
-    chats = [c[0] for c in cur.fetchall()]
+        # CREATE NEW USER
+        c.execute(
+            "INSERT INTO users (username, password) VALUES (?,?)",
+            (username, password)
+        )
 
-    return {"chats": chats}
+        conn.commit()
 
-# ================= CHAT LOAD =================
-@app.get("/load/{user_id}/{chat_id}")
-def load(user_id: str, chat_id: str):
-
-    cur.execute(
-        "SELECT role, message FROM chats WHERE user_id=? AND chat_id=?",
-        (user_id, chat_id)
-    )
-
-    return {"messages": cur.fetchall()}
-
-# ================= CHAT =================
-@app.post("/chat")
-def chat(data: Chat):
-
-    cur.execute(
-        "INSERT INTO chats VALUES (?, ?, ?, ?)",
-        (data.chat_id, data.user_id, "user", data.message)
-    )
-    conn.commit()
-
-    cur.execute(
-        "SELECT role, message FROM chats WHERE user_id=? AND chat_id=?",
-        (data.user_id, data.chat_id)
-    )
-
-    history = cur.fetchall()
-
-    messages = [
-        {
-            "role": "system",
-            "content": """
-You are MOTI AI ChatGPT clone.
-- respond naturally
-- multilingual
-- human tone
-"""
-        }
-    ]
-
-    for r, m in history:
-        messages.append({
-            "role": "user" if r == "user" else "assistant",
-            "content": m
+        return jsonify({
+            "user_id": str(c.lastrowid)
         })
 
-    messages.append({"role": "user", "content": data.message})
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
 
-    res = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=messages,
-        temperature=0.8,
-        max_tokens=600
+# ======================================================
+# CHAT
+# ======================================================
+
+@app.route("/chat", methods=["POST"])
+def chat():
+
+    try:
+
+        data = request.json
+
+        user_id = str(data.get("user_id"))
+        chat_id = str(data.get("chat_id"))
+        message = data.get("message")
+
+        # SAFETY
+        if not user_id or not chat_id or not message:
+            return jsonify({
+                "error": "missing data"
+            }), 400
+
+        # SAVE USER MESSAGE
+        c.execute(
+            """
+            INSERT INTO chats (id, user_id, role, message)
+            VALUES (?, ?, ?, ?)
+            """,
+            (chat_id, user_id, "user", message)
+        )
+
+        # ======================================================
+        # AI REPLY
+        # ======================================================
+
+        lower = message.lower()
+
+        # WEATHER
+        if "weather" in lower:
+            reply = (
+                "Today's weather is warm with clear skies ☀️"
+            )
+
+        # HELLO
+        elif "hello" in lower or "hi" in lower:
+            reply = "Hello 👋 I am MOTI AI."
+
+        # DEFAULT
+        else:
+            reply = f"MOTI: understood → {message}"
+
+        # SAVE AI MESSAGE
+        c.execute(
+            """
+            INSERT INTO chats (id, user_id, role, message)
+            VALUES (?, ?, ?, ?)
+            """,
+            (chat_id, user_id, "ai", reply)
+        )
+
+        conn.commit()
+
+        print("Saved Chat:", chat_id, user_id)
+
+        return jsonify({
+            "reply": reply
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+# ======================================================
+# HISTORY
+# ======================================================
+
+@app.route("/history/<user_id>")
+def history(user_id):
+
+    try:
+
+        c.execute(
+            """
+            SELECT DISTINCT id
+            FROM chats
+            WHERE user_id=?
+            ORDER BY rowid DESC
+            """,
+            (str(user_id),)
+        )
+
+        rows = c.fetchall()
+
+        chats = [row[0] for row in rows]
+
+        return jsonify({
+            "chats": chats
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+# ======================================================
+# LOAD CHAT
+# ======================================================
+
+@app.route("/load/<user_id>/<chat_id>")
+def load_chat(user_id, chat_id):
+
+    try:
+
+        c.execute(
+            """
+            SELECT role, message
+            FROM chats
+            WHERE user_id=? AND id=?
+            ORDER BY rowid ASC
+            """,
+            (str(user_id), str(chat_id))
+        )
+
+        rows = c.fetchall()
+
+        messages = []
+
+        for row in rows:
+            messages.append([
+                row[0],
+                row[1]
+            ])
+
+        return jsonify({
+            "messages": messages
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+# ======================================================
+# DELETE CHAT
+# ======================================================
+
+@app.route("/delete/<user_id>/<chat_id>", methods=["DELETE"])
+def delete_chat(user_id, chat_id):
+
+    try:
+
+        c.execute(
+            """
+            DELETE FROM chats
+            WHERE user_id=? AND id=?
+            """,
+            (str(user_id), str(chat_id))
+        )
+
+        conn.commit()
+
+        return jsonify({
+            "success": True
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+# ======================================================
+# RUN
+# ======================================================
+
+if __name__ == "__main__":
+
+    print("🚀 MOTI AI BACKEND STARTED")
+
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=True
     )
-
-    reply = res.choices[0].message.content
-
-    cur.execute(
-        "INSERT INTO chats VALUES (?, ?, ?, ?)",
-        (data.chat_id, data.user_id, "assistant", reply)
-    )
-
-    conn.commit()
-
-    return {"reply": reply}
