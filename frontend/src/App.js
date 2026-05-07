@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 
 export default function App() {
@@ -10,6 +10,7 @@ export default function App() {
 
   const [chat, setChat] = useState([]);
   const [input, setInput] = useState("");
+
   const [status, setStatus] = useState("Idle");
   const [loading, setLoading] = useState(false);
 
@@ -24,20 +25,21 @@ export default function App() {
       loadHistory(savedUser);
     }
 
-    initVoice();
+    initVoiceRecognition();
   }, []);
 
-  // ---------------- LOAD CHAT HISTORY ----------------
+  // ---------------- LOAD HISTORY ----------------
   const loadHistory = async (uid) => {
     try {
       const res = await axios.get(`${API}/history/${uid}`);
 
-      const history = res.data.history.map((msg) => ({
+      const formatted = res.data.history.map((msg) => ({
         role: msg[0],
         text: msg[1]
       }));
 
-      setChat(history);
+      setChat(formatted);
+
     } catch (err) {
       console.log(err);
     }
@@ -46,7 +48,7 @@ export default function App() {
   // ---------------- LOGIN ----------------
   const login = async () => {
     if (!username || !password) {
-      alert("Enter username and password");
+      alert("Enter username & password");
       return;
     }
 
@@ -61,7 +63,8 @@ export default function App() {
       setUserId(res.data.user_id);
 
       loadHistory(res.data.user_id);
-    } catch (err) {
+
+    } catch {
       alert("Login failed");
     }
   };
@@ -69,43 +72,68 @@ export default function App() {
   // ---------------- LOGOUT ----------------
   const logout = () => {
     localStorage.removeItem("moti_user");
+
     setUserId("");
     setChat([]);
   };
 
-  // ---------------- SPEAK ----------------
+  // ---------------- ULTRA VOICE ----------------
   const speak = async (text) => {
-  try {
-    setStatus("Speaking");
+    try {
+      setStatus("Speaking");
 
-    const response = await fetch(`${API}/voice`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ text })
-    });
+      const response = await fetch(`${API}/voice`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          text
+        })
+      });
 
-    const blob = await response.blob();
+      if (!response.ok) {
+        fallbackVoice(text);
+        return;
+      }
 
-    const audioUrl = URL.createObjectURL(blob);
+      const blob = await response.blob();
 
-    const audio = new Audio(audioUrl);
+      const audioUrl = URL.createObjectURL(blob);
 
-    audio.play();
+      const audio = new Audio(audioUrl);
 
-    audio.onended = () => {
+      audio.volume = 1;
+
+      await audio.play();
+
+      audio.onended = () => {
+        setStatus("Idle");
+      };
+
+    } catch (err) {
+      console.log(err);
+      fallbackVoice(text);
+    }
+  };
+
+  // ---------------- BACKUP VOICE ----------------
+  const fallbackVoice = (text) => {
+    const utter = new SpeechSynthesisUtterance(text);
+
+    utter.lang = "en-US";
+    utter.rate = 1;
+    utter.pitch = 1;
+
+    speechSynthesis.speak(utter);
+
+    utter.onend = () => {
       setStatus("Idle");
     };
-
-  } catch (err) {
-    console.log(err);
-    setStatus("Idle");
-  }
-};
+  };
 
   // ---------------- VOICE INPUT ----------------
-  const initVoice = () => {
+  const initVoiceRecognition = () => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -118,7 +146,6 @@ export default function App() {
 
     recognition.onstart = () => {
       setStatus("Listening");
-      window.speechSynthesis.cancel();
     };
 
     recognition.onend = () => {
@@ -127,6 +154,7 @@ export default function App() {
 
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
+
       sendMessage(transcript);
     };
 
@@ -140,86 +168,89 @@ export default function App() {
   };
 
   // ---------------- SEND MESSAGE ----------------
-  const sendMessage = async (customMessage = null) => {
-  const text = customMessage || input;
+  const sendMessage = async (customText = null) => {
+    const text = customText || input;
 
-  if (!text.trim()) return;
+    if (!text.trim()) return;
 
-  const userMessage = {
-    role: "user",
-    text
-  };
+    const userMsg = {
+      role: "user",
+      text
+    };
 
-  setChat((prev) => [...prev, userMessage]);
+    setChat((prev) => [...prev, userMsg]);
 
-  setInput("");
-  setLoading(true);
-  setStatus("Thinking");
+    setInput("");
+    setLoading(true);
+    setStatus("Thinking");
 
-  try {
-    const res = await axios.post(`${API}/chat`, {
-      user_id: userId,
-      message: text
-    });
-
-    const fullReply = res.data.reply;
-
-    let currentText = "";
-
-    const botIndex = chat.length + 1;
-
-    setChat((prev) => [
-      ...prev,
-      {
-        role: "assistant",
-        text: ""
-      }
-    ]);
-
-    let i = 0;
-
-    const interval = setInterval(() => {
-      currentText += fullReply[i];
-
-      setChat((prev) => {
-        const updated = [...prev];
-
-        updated[botIndex] = {
-          role: "assistant",
-          text: currentText
-        };
-
-        return updated;
+    try {
+      const res = await axios.post(`${API}/chat`, {
+        user_id: userId,
+        message: text
       });
 
-      i++;
+      const fullReply = res.data.reply;
 
-      if (i >= fullReply.length) {
-        clearInterval(interval);
-        speak(fullReply);
-      }
-    }, 18);
+      let current = "";
 
-  } catch (err) {
-    setChat((prev) => [
-      ...prev,
-      {
-        role: "assistant",
-        text: "Server error."
-      }
-    ]);
-  }
+      const botIndex = chat.length + 1;
 
-  setLoading(false);
-  setStatus("Idle");
-};
+      setChat((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text: ""
+        }
+      ]);
+
+      let i = 0;
+
+      const interval = setInterval(() => {
+        current += fullReply[i];
+
+        setChat((prev) => {
+          const updated = [...prev];
+
+          updated[botIndex] = {
+            role: "assistant",
+            text: current
+          };
+
+          return updated;
+        });
+
+        i++;
+
+        if (i >= fullReply.length) {
+          clearInterval(interval);
+
+          speak(fullReply);
+        }
+
+      }, 15);
+
+    } catch {
+      setChat((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text: "Server error."
+        }
+      ]);
+    }
+
+    setLoading(false);
+    setStatus("Idle");
+  };
 
   // ---------------- LOGIN PAGE ----------------
   if (!userId) {
     return (
       <div style={styles.loginPage}>
         <div style={styles.loginCard}>
-          <div style={styles.logoGlow}></div>
+
+          <div style={styles.glow}></div>
 
           <h1 style={styles.title}>MOTI AI</h1>
 
@@ -238,17 +269,22 @@ export default function App() {
             onChange={(e) => setPassword(e.target.value)}
           />
 
-          <button style={styles.loginBtn} onClick={login}>
+          <button
+            style={styles.loginBtn}
+            onClick={login}
+          >
             Enter Assistant
           </button>
+
         </div>
       </div>
     );
   }
 
-  // ---------------- MAIN CHAT UI ----------------
+  // ---------------- MAIN UI ----------------
   return (
     <div style={styles.container}>
+
       {/* SIDEBAR */}
       <div style={styles.sidebar}>
         <h2>MOTI</h2>
@@ -256,36 +292,40 @@ export default function App() {
         <p>Premium AI Assistant</p>
 
         <p
-  style={{
-    color:
-      status === "Listening"
-        ? "#00ffd5"
-        : status === "Speaking"
-        ? "#ff66ff"
-        : "#9aa0ff"
-  }}
->
-  Status: {status}
-</p>
+          style={{
+            color:
+              status === "Listening"
+                ? "#00ffd5"
+                : status === "Speaking"
+                ? "#ff66ff"
+                : "#9aa0ff"
+          }}
+        >
+          Status: {status}
+        </p>
 
-        <button style={styles.logoutBtn} onClick={logout}>
+        <button
+          style={styles.logoutBtn}
+          onClick={logout}
+        >
           Logout
         </button>
       </div>
 
       {/* MAIN */}
       <div style={styles.main}>
+
         <div
-  style={{
-    ...styles.aiOrb,
-    transform:
-      status === "Listening"
-        ? "scale(1.15)"
-        : status === "Speaking"
-        ? "scale(1.08)"
-        : "scale(1)"
-  }}
-></div>
+          style={{
+            ...styles.aiOrb,
+            transform:
+              status === "Listening"
+                ? "scale(1.15)"
+                : status === "Speaking"
+                ? "scale(1.08)"
+                : "scale(1)"
+          }}
+        ></div>
 
         <div style={styles.chatArea}>
           {chat.map((msg, index) => (
@@ -309,6 +349,7 @@ export default function App() {
         </div>
 
         <div style={styles.bottomBar}>
+
           <input
             style={styles.chatInput}
             placeholder="Ask anything..."
@@ -334,13 +375,13 @@ export default function App() {
           >
             🎤
           </button>
+
         </div>
       </div>
     </div>
   );
 }
 
-// ---------------- STYLES ----------------
 const styles = {
   loginPage: {
     height: "100vh",
@@ -352,22 +393,22 @@ const styles = {
 
   loginCard: {
     width: "340px",
-    background: "rgba(255,255,255,0.05)",
     padding: "30px",
-    borderRadius: "20px",
+    borderRadius: "24px",
+    background: "rgba(255,255,255,0.05)",
     backdropFilter: "blur(20px)",
-    boxShadow: "0 0 40px rgba(108,99,255,0.5)",
-    textAlign: "center"
+    textAlign: "center",
+    boxShadow: "0 0 40px rgba(108,99,255,0.5)"
   },
 
-  logoGlow: {
-    width: "90px",
-    height: "90px",
+  glow: {
+    width: "100px",
+    height: "100px",
     borderRadius: "50%",
     margin: "auto",
     marginBottom: "20px",
     background: "#6c63ff",
-    boxShadow: "0 0 40px #6c63ff"
+    boxShadow: "0 0 60px #6c63ff"
   },
 
   title: {
@@ -391,8 +432,8 @@ const styles = {
     border: "none",
     background: "#6c63ff",
     color: "white",
-    fontWeight: "bold",
-    cursor: "pointer"
+    cursor: "pointer",
+    fontWeight: "bold"
   },
 
   container: {
@@ -403,10 +444,10 @@ const styles = {
   },
 
   sidebar: {
-    width: "240px",
+    width: "230px",
+    padding: "20px",
     background: "rgba(255,255,255,0.04)",
-    borderRight: "1px solid rgba(255,255,255,0.08)",
-    padding: "20px"
+    borderRight: "1px solid rgba(255,255,255,0.08)"
   },
 
   logoutBtn: {
@@ -429,16 +470,16 @@ const styles = {
   },
 
   aiOrb: {
-  width: "130px",
-  height: "130px",
-  borderRadius: "50%",
-  marginBottom: "20px",
-  background:
-    "radial-gradient(circle, #8f7bff 0%, #5b4dff 40%, #2d1eff 100%)",
-  boxShadow:
-    "0 0 20px #6c63ff, 0 0 60px #6c63ff, 0 0 100px #6c63ff",
-  animation: "pulse 2s infinite ease-in-out"
-},
+    width: "130px",
+    height: "130px",
+    borderRadius: "50%",
+    marginBottom: "20px",
+    background:
+      "radial-gradient(circle, #8f7bff 0%, #5b4dff 40%, #2d1eff 100%)",
+    boxShadow:
+      "0 0 20px #6c63ff, 0 0 60px #6c63ff, 0 0 100px #6c63ff",
+    transition: "0.3s"
+  },
 
   chatArea: {
     flex: 1,
