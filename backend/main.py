@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import sqlite3
 import uuid
 import os
+import requests
 from groq import Groq
 
 app = FastAPI()
@@ -36,35 +37,39 @@ CREATE TABLE IF NOT EXISTS chats (
 )
 """)
 
-cur.execute("""
-CREATE TABLE IF NOT EXISTS memory (
-    user_id TEXT,
-    memory TEXT
-)
-""")
-
 conn.commit()
 
-# ================= AI =================
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# ================= MODELS =================
-class LoginData(BaseModel):
+class Login(BaseModel):
     username: str
     password: str
 
-class ChatData(BaseModel):
+class Chat(BaseModel):
     user_id: str
     message: str
+
+# ================= SEARCH AGENT =================
+def web_search(query):
+
+    try:
+        url = f"https://api.duckduckgo.com/?q={query}&format=json"
+        r = requests.get(url, timeout=5)
+        data = r.json()
+
+        return data.get("AbstractText") or "No strong web result found."
+
+    except:
+        return "Search unavailable"
 
 # ================= ROOT =================
 @app.get("/")
 def root():
-    return {"status": "MOTI GOD MODE AI ONLINE"}
+    return {"status": "MOTI ULTRA AI ACTIVE"}
 
 # ================= LOGIN =================
 @app.post("/login")
-def login(data: LoginData):
+def login(data: Login):
 
     cur.execute(
         "SELECT user_id FROM users WHERE username=? AND password=?",
@@ -87,39 +92,22 @@ def login(data: LoginData):
 
     return {"user_id": uid}
 
-# ================= MEMORY SYSTEM =================
-def save_memory(user_id, text):
-
-    if len(text) > 3:
-        cur.execute(
-            "INSERT INTO memory VALUES (?, ?)",
-            (user_id, text)
-        )
-        conn.commit()
-
-def get_memory(user_id):
-
-    cur.execute(
-        "SELECT memory FROM memory WHERE user_id=? ORDER BY rowid DESC LIMIT 10",
-        (user_id,)
-    )
-
-    return "\n".join([m[0] for m in cur.fetchall()])
-
 # ================= CHAT =================
 @app.post("/chat")
-def chat(data: ChatData):
+def chat(data: Chat):
+
+    msg = data.message.lower()
 
     # save user msg
-    cur.execute(
-        "INSERT INTO chats VALUES (?, ?, ?)",
-        (data.user_id, "user", data.message)
-    )
+    cur.execute("INSERT INTO chats VALUES (?, ?, ?)",
+                (data.user_id, "user", data.message))
     conn.commit()
 
-    save_memory(data.user_id, data.message)
+    # WEB BROWSING MODE
+    web_data = ""
+    if "search" in msg or "google" in msg or "news" in msg:
+        web_data = web_search(data.message)
 
-    # history (safe limit)
     cur.execute(
         "SELECT role, message FROM chats WHERE user_id=? ORDER BY rowid DESC LIMIT 20",
         (data.user_id,)
@@ -127,56 +115,46 @@ def chat(data: ChatData):
 
     history = cur.fetchall()[::-1]
 
-    memory = get_memory(data.user_id)
-
     messages = [
         {
             "role": "system",
             "content": """
-You are MOTI GOD MODE AI.
+You are MOTI ULTRA AI.
 
 Rules:
-- Auto detect language
-- Reply in same language
-- Be human, emotional, smart
-- Use memory when needed
-- Never say offline or no access
+- Always respond in same language
+- Be natural human assistant
+- Use web data if available
+- Never say offline
 """
         }
     ]
 
-    # memory injection
-    if memory:
+    if web_data:
         messages.append({
             "role": "system",
-            "content": f"User Memory:\n{memory}"
+            "content": f"Web Result: {web_data}"
         })
 
-    # history
     for r, m in history:
         messages.append({
             "role": "user" if r == "user" else "assistant",
             "content": m
         })
 
-    messages.append({
-        "role": "user",
-        "content": data.message
-    })
+    messages.append({"role": "user", "content": data.message})
 
     res = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=messages,
         temperature=0.85,
-        max_tokens=700
+        max_tokens=600
     )
 
     reply = res.choices[0].message.content
 
-    cur.execute(
-        "INSERT INTO chats VALUES (?, ?, ?)",
-        (data.user_id, "assistant", reply)
-    )
+    cur.execute("INSERT INTO chats VALUES (?, ?, ?)",
+                (data.user_id, "assistant", reply))
 
     conn.commit()
 

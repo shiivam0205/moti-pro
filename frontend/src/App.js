@@ -1,112 +1,120 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 export default function App() {
 
   const API = "https://moti-pro07.onrender.com";
 
-  const [userId, setUserId] = useState(null);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [userId, setUserId] = useState(localStorage.getItem("uid"));
+  const [u, setU] = useState("");
+  const [p, setP] = useState("");
 
-  const [input, setInput] = useState("");
+  const [msg, setMsg] = useState("");
   const [chat, setChat] = useState([]);
+
+  const [listening, setListening] = useState(false);
+
+  const recognitionRef = useRef(null);
+
+  // ================= PERSIST LOGIN =================
+  useEffect(() => {
+    if (userId) localStorage.setItem("uid", userId);
+  }, [userId]);
+
+  // ================= VOICE OUTPUT =================
+  const speak = (text) => {
+
+    window.speechSynthesis.cancel(); // FIX delay
+
+    const s = new SpeechSynthesisUtterance(text);
+    s.rate = 1;
+    s.pitch = 1;
+
+    window.speechSynthesis.speak(s);
+  };
+
+  // ================= MIC AUTO =================
+  const startMic = () => {
+
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    const recog = new SpeechRecognition();
+
+    recog.continuous = true;
+    recog.lang = "auto";
+    recog.interimResults = false;
+
+    recog.onresult = (e) => {
+
+      const text = e.results[e.results.length - 1][0].transcript;
+
+      setMsg(text);
+    };
+
+    recognitionRef.current = recog;
+
+    recog.start();
+    setListening(true);
+  };
+
+  const stopMic = () => {
+    recognitionRef.current?.stop();
+    setListening(false);
+  };
 
   // ================= LOGIN =================
   const login = async () => {
 
-    const res = await fetch(`${API}/login`, {
+    const r = await fetch(`${API}/login`, {
       method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ username, password })
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ username: u, password: p })
     });
 
-    const data = await res.json();
+    const d = await r.json();
 
-    if (data.user_id) setUserId(data.user_id);
-  };
-
-  // ================= VOICE =================
-  const speak = (text) => {
-
-    const msg = new SpeechSynthesisUtterance(text);
-    msg.rate = 1;
-    msg.pitch = 1;
-    window.speechSynthesis.speak(msg);
-  };
-
-  // ================= STREAM EFFECT =================
-  const typeEffect = (text, callback) => {
-
-    let i = 0;
-    let temp = "";
-
-    const interval = setInterval(() => {
-
-      temp += text[i];
-      i++;
-
-      callback(temp);
-
-      if (i >= text.length) clearInterval(interval);
-
-    }, 15);
+    if (d.user_id) setUserId(d.user_id);
   };
 
   // ================= SEND =================
   const send = async () => {
 
-    if (!input) return;
+    if (!msg) return;
 
-    const updated = [...chat, { role: "user", text: input }];
+    const updated = [...chat, { role: "user", text: msg }];
     setChat(updated);
 
-    const text = input;
-    setInput("");
+    const text = msg;
+    setMsg("");
 
-    const res = await fetch(`${API}/chat`, {
+    const r = await fetch(`${API}/chat`, {
       method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        user_id: userId,
-        message: text
-      })
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ user_id: userId, message: text })
     });
 
-    const data = await res.json();
+    const d = await r.json();
 
-    let streamingMsg = { role: "ai", text: "" };
+    setChat([...updated, { role: "ai", text: d.reply }]);
 
-    setChat([...updated, streamingMsg]);
-
-    typeEffect(data.reply, (val) => {
-
-      setChat(prev => {
-        const copy = [...prev];
-        copy[copy.length - 1] = { role: "ai", text: val };
-        return copy;
-      });
-
-    });
-
-    speak(data.reply);
+    speak(d.reply);
   };
 
   // ================= LOGIN UI =================
   if (!userId) {
     return (
       <div style={styles.login}>
-        <h1>MOTI GOD MODE AI</h1>
+        <h2>MOTI AI</h2>
 
-        <input style={styles.input} placeholder="username"
-          onChange={(e)=>setUsername(e.target.value)}
-        />
+        <input style={styles.small} placeholder="username"
+          onChange={(e)=>setU(e.target.value)} />
 
-        <input style={styles.input} type="password" placeholder="password"
-          onChange={(e)=>setPassword(e.target.value)}
-        />
+        <input style={styles.small} type="password"
+          placeholder="password"
+          onChange={(e)=>setP(e.target.value)} />
 
         <button style={styles.btn} onClick={login}>
-          Enter AI
+          Enter
         </button>
       </div>
     );
@@ -116,15 +124,17 @@ export default function App() {
   return (
     <div style={styles.app}>
 
-      <div style={styles.header}>MOTI GOD MODE AI</div>
+      {/* AVATAR */}
+      <div style={styles.avatar}>
+        🤖 {listening ? "🎤 Speaking..." : "MOTI AI"}
+      </div>
 
       <div style={styles.chat}>
         {chat.map((c,i)=>(
           <div key={i}
             style={{
               ...styles.msg,
-              alignSelf: c.role==="user"?"flex-end":"flex-start",
-              background: c.role==="user"?"#4a90e2":"#222"
+              alignSelf: c.role==="user"?"flex-end":"flex-start"
             }}
           >
             {c.text}
@@ -133,36 +143,40 @@ export default function App() {
       </div>
 
       <div style={styles.bottom}>
+
         <input style={styles.input}
-          value={input}
-          onChange={(e)=>setInput(e.target.value)}
-          placeholder="Ask anything in any language..."
+          value={msg}
+          onChange={(e)=>setMsg(e.target.value)}
+          placeholder="Speak or type..."
         />
 
-        <button style={styles.btn} onClick={send}>
-          Send
+        <button style={styles.btn} onClick={send}>Send</button>
+
+        <button style={styles.btn}
+          onClick={listening ? stopMic : startMic}>
+          🎤
         </button>
+
       </div>
 
     </div>
   );
 }
 
-// ================= STYLES =================
+// ================= STYLE =================
 const styles = {
 
   app: {
     height: "100vh",
     display: "flex",
     flexDirection: "column",
-    background: "#0b0b0b",
-    color: "white"
+    background: "linear-gradient(#0a0a0a,#111)"
   },
 
-  header: {
+  avatar: {
     padding: 10,
     textAlign: "center",
-    background: "#111"
+    color: "white"
   },
 
   chat: {
@@ -177,30 +191,29 @@ const styles = {
   msg: {
     padding: 10,
     borderRadius: 10,
-    maxWidth: "75%"
+    maxWidth: "70%",
+    background: "#222",
+    color: "white"
   },
 
   bottom: {
     display: "flex",
     padding: 10,
-    background: "#111"
+    gap: 5
   },
 
   input: {
     flex: 1,
     padding: 10,
-    borderRadius: 8,
-    border: "none",
-    outline: "none"
+    borderRadius: 8
   },
 
   btn: {
-    marginLeft: 10,
-    padding: "10px 15px",
+    padding: 10,
     background: "#4a90e2",
+    color: "white",
     border: "none",
-    borderRadius: 8,
-    color: "white"
+    borderRadius: 8
   },
 
   login: {
@@ -210,7 +223,13 @@ const styles = {
     justifyContent: "center",
     alignItems: "center",
     gap: 10,
-    background: "#0b0b0b",
+    background: "#0a0a0a",
     color: "white"
+  },
+
+  small: {
+    padding: 8,
+    width: 180,
+    borderRadius: 6
   }
 };
