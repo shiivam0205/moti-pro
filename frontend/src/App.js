@@ -74,20 +74,35 @@ export default function App() {
   };
 
   // ---------------- SPEAK ----------------
-  const speak = (text) => {
-    window.speechSynthesis.cancel();
+  const speak = async (text) => {
+  try {
+    setStatus("Speaking");
 
-    const utter = new SpeechSynthesisUtterance(text);
+    const response = await fetch(`${API}/voice`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ text })
+    });
 
-    utter.lang = "en-US";
-    utter.rate = 1;
-    utter.pitch = 1;
+    const blob = await response.blob();
 
-    utter.onstart = () => setStatus("Speaking");
-    utter.onend = () => setStatus("Idle");
+    const audioUrl = URL.createObjectURL(blob);
 
-    window.speechSynthesis.speak(utter);
-  };
+    const audio = new Audio(audioUrl);
+
+    audio.play();
+
+    audio.onended = () => {
+      setStatus("Idle");
+    };
+
+  } catch (err) {
+    console.log(err);
+    setStatus("Idle");
+  }
+};
 
   // ---------------- VOICE INPUT ----------------
   const initVoice = () => {
