@@ -10,14 +10,14 @@ import uuid
 import os
 import requests
 
-# =========================
+# ====================================
 # APP
-# =========================
+# ====================================
 app = FastAPI()
 
-# =========================
+# ====================================
 # CORS
-# =========================
+# ====================================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,12 +26,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# =========================
+# ====================================
 # DATABASE
-# =========================
-conn = sqlite3.connect("moti.db", check_same_thread=False)
+# ====================================
+conn = sqlite3.connect(
+    "moti.db",
+    check_same_thread=False
+)
+
 cur = conn.cursor()
 
+# USERS
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id TEXT,
@@ -40,6 +45,7 @@ CREATE TABLE IF NOT EXISTS users (
 )
 """)
 
+# CHATS
 cur.execute("""
 CREATE TABLE IF NOT EXISTS chats (
     user_id TEXT,
@@ -48,6 +54,7 @@ CREATE TABLE IF NOT EXISTS chats (
 )
 """)
 
+# MEMORY
 cur.execute("""
 CREATE TABLE IF NOT EXISTS memory (
     user_id TEXT,
@@ -57,22 +64,22 @@ CREATE TABLE IF NOT EXISTS memory (
 
 conn.commit()
 
-# =========================
-# ENV VARIABLES
-# =========================
+# ====================================
+# ENV
+# ====================================
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY")
 
-# =========================
-# GROQ CLIENT
-# =========================
+# ====================================
+# AI CLIENT
+# ====================================
 client = Groq(
     api_key=GROQ_API_KEY
 )
 
-# =========================
+# ====================================
 # MODELS
-# =========================
+# ====================================
 class LoginData(BaseModel):
     username: str
     password: str
@@ -87,9 +94,9 @@ class VoiceData(BaseModel):
     text: str
 
 
-# =========================
+# ====================================
 # ROOT
-# =========================
+# ====================================
 @app.get("/")
 def root():
     return {
@@ -97,32 +104,46 @@ def root():
     }
 
 
-# =========================
+# ====================================
 # LOGIN
-# =========================
+# ====================================
 @app.post("/login")
 def login(data: LoginData):
+
     try:
+
         cur.execute(
-            "SELECT user_id FROM users WHERE username=? AND password=?",
-            (data.username, data.password)
+            """
+            SELECT user_id
+            FROM users
+            WHERE username=?
+            AND password=?
+            """,
+            (
+                data.username,
+                data.password
+            )
         )
 
         user = cur.fetchone()
 
         # EXISTING USER
         if user:
+
             return {
                 "user_id": user[0]
             }
 
-        # CREATE NEW USER
-        new_user_id = str(uuid.uuid4())
+        # NEW USER
+        new_id = str(uuid.uuid4())
 
         cur.execute(
-            "INSERT INTO users VALUES (?, ?, ?)",
+            """
+            INSERT INTO users
+            VALUES (?, ?, ?)
+            """,
             (
-                new_user_id,
+                new_id,
                 data.username,
                 data.password
             )
@@ -131,21 +152,24 @@ def login(data: LoginData):
         conn.commit()
 
         return {
-            "user_id": new_user_id
+            "user_id": new_id
         }
 
     except Exception as e:
+
         return {
             "error": str(e)
         }
 
 
-# =========================
-# CHAT HISTORY
-# =========================
+# ====================================
+# HISTORY
+# ====================================
 @app.get("/history/{user_id}")
 def history(user_id: str):
+
     try:
+
         cur.execute(
             """
             SELECT role, message
@@ -162,39 +186,46 @@ def history(user_id: str):
             "history": rows
         }
 
-    except Exception:
+    except:
+
         return {
             "history": []
         }
 
 
-# =========================
-# MEMORY SAVE
-# =========================
+# ====================================
+# SAVE MEMORY
+# ====================================
 def save_memory(user_id, text):
 
-    memory_keywords = [
+    keywords = [
         "remember",
-        "my favorite",
         "i like",
         "i love",
-        "my dream",
+        "my favorite",
         "my goal",
+        "my dream",
+        "my hobby",
         "my name",
         "i am",
-        "i live",
-        "my hobby"
+        "i live"
     ]
 
-    lower_text = text.lower()
+    lower = text.lower()
 
-    for keyword in memory_keywords:
+    for keyword in keywords:
 
-        if keyword in lower_text:
+        if keyword in lower:
 
             cur.execute(
-                "INSERT INTO memory VALUES (?, ?)",
-                (user_id, text)
+                """
+                INSERT INTO memory
+                VALUES (?, ?)
+                """,
+                (
+                    user_id,
+                    text
+                )
             )
 
             conn.commit()
@@ -202,9 +233,9 @@ def save_memory(user_id, text):
             break
 
 
-# =========================
+# ====================================
 # GET MEMORY
-# =========================
+# ====================================
 def get_memory(user_id):
 
     cur.execute(
@@ -220,27 +251,28 @@ def get_memory(user_id):
 
     rows = cur.fetchall()
 
-    memories = [r[0] for r in rows]
+    return "\n".join(
+        [r[0] for r in rows]
+    )
 
-    return "\n".join(memories)
 
-
-# =========================
+# ====================================
 # INTERNET SEARCH
-# =========================
+# ====================================
 def internet_search(query):
 
     try:
+
         results = []
 
         with DDGS() as ddgs:
 
-            search_results = ddgs.text(
+            search = ddgs.text(
                 query,
                 max_results=5
             )
 
-            for r in search_results:
+            for r in search:
 
                 title = r.get("title", "")
                 body = r.get("body", "")
@@ -256,9 +288,9 @@ def internet_search(query):
         return f"Search failed: {str(e)}"
 
 
-# =========================
+# ====================================
 # CHAT
-# =========================
+# ====================================
 @app.post("/chat")
 def chat(data: ChatData):
 
@@ -266,7 +298,10 @@ def chat(data: ChatData):
 
         # SAVE USER MESSAGE
         cur.execute(
-            "INSERT INTO chats VALUES (?, ?, ?)",
+            """
+            INSERT INTO chats
+            VALUES (?, ?, ?)
+            """,
             (
                 data.user_id,
                 "user",
@@ -300,7 +335,7 @@ def chat(data: ChatData):
             else "friend"
         )
 
-        # GET CHAT HISTORY
+        # HISTORY
         cur.execute(
             """
             SELECT role, message
@@ -316,7 +351,7 @@ def chat(data: ChatData):
 
         rows.reverse()
 
-        # GET MEMORY
+        # MEMORY
         memory_context = get_memory(
             data.user_id
         )
@@ -325,22 +360,19 @@ def chat(data: ChatData):
         lower = data.message.lower()
 
         search_keywords = [
-    "weather",
-    "today",
-    "latest",
-    "news",
-    "price",
-    "current",
-    "temperature",
-    "forecast",
-    "bitcoin",
-    "stock",
-    "search",
-    "internet",
-    "who is",
-    "what is",
-    "live"
-]
+            "weather",
+            "today",
+            "latest",
+            "news",
+            "price",
+            "bitcoin",
+            "temperature",
+            "forecast",
+            "current",
+            "who is",
+            "what is",
+            "live"
+        ]
 
         internet_context = ""
 
@@ -351,23 +383,52 @@ def chat(data: ChatData):
 
             search_query = data.message
 
-if "weather" in lower or "temperature" in lower:
-    search_query = "current weather today India"
+            # STRONGER WEATHER SEARCH
+            if (
+                "weather" in lower
+                or "temperature" in lower
+            ):
 
-if "bitcoin" in lower:
-    search_query = "bitcoin live price today"
+                search_query = (
+                    "India weather today "
+                    "temperature forecast"
+                )
 
-if "news" in lower:
-    search_query = "latest breaking news today"
+            # NEWS SEARCH
+            if "news" in lower:
 
-        # SYSTEM PROMPT
-        messages = [
-            {
-                "role": "system",
-                "content": f"""
+                search_query = (
+                    "latest breaking news today"
+                )
+
+            # BITCOIN
+            if "bitcoin" in lower:
+
+                search_query = (
+                    "bitcoin live price today"
+                )
+
+            internet_context = internet_search(
+                search_query
+            )
+
+        print("INTERNET DATA:")
+        print(internet_context)
+
+        # ====================================
+        # AI PROMPT
+        # ====================================
+        messages = []
+
+        # SYSTEM
+        messages.append({
+            "role": "system",
+            "content": f"""
 You are MOTI.
 
-You are an ultra premium realtime AI assistant.
+You are an ultra premium AI assistant.
+
+You HAVE realtime internet access.
 
 User:
 {username}
@@ -375,52 +436,44 @@ User:
 Memory:
 {memory_context}
 
-Realtime Internet Results:
-{internet_context}
+VERY IMPORTANT RULES:
 
-CRITICAL RULES:
-
-1. If Realtime Internet Results exist,
-ALWAYS use them in your answer.
-
-2. NEVER say:
+1. NEVER say:
 - "I don't have realtime access"
-- "I cannot access current weather"
+- "I cannot access live data"
 - "I am offline"
 
-3. Internet results are REALTIME DATA.
+2. If internet data exists,
+ALWAYS use it confidently.
 
-4. If weather/news/price/current events are asked,
-you MUST answer directly using Internet Results.
+3. Speak naturally like ChatGPT.
 
-5. Speak naturally like ChatGPT Premium.
+4. Sound human and emotional.
 
-6. Support English and Hindi naturally.
+5. Support Hindi and English.
 
-7. Be conversational and intelligent.
+6. Never sound robotic.
 
-8. Never sound robotic.
+7. Give direct answers.
 """
+        })
 
-Rules:
-- Speak naturally like ChatGPT Premium
-- Sound human and emotional
-- Avoid robotic replies
-- Support Hindi and English
-- Be intelligent and helpful
-- Answer clearly and conversationally
-- - VERY IMPORTANT:
-If internet search results are available,
-you MUST answer using that realtime data.
+        # INTERNET DATA
+        if internet_context:
 
-Never say you do not have realtime access.
-Never say you cannot access live weather/news.
-Always use the provided Internet Search Results.
+            messages.append({
+                "role": "system",
+                "content": f"""
+REALTIME INTERNET DATA:
+
+{internet_context}
+
+Use this realtime data
+in your next reply.
 """
-            }
-        ]
+            })
 
-        # CHAT HISTORY
+        # HISTORY
         for role, msg in rows:
 
             real_role = (
@@ -434,12 +487,12 @@ Always use the provided Internet Search Results.
                 "content": msg
             })
 
-        # AI COMPLETION
+        # AI RESPONSE
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages,
             temperature=0.9,
-            max_tokens=400
+            max_tokens=450
         )
 
         reply = (
@@ -449,9 +502,12 @@ Always use the provided Internet Search Results.
             .content
         )
 
-        # SAVE AI REPLY
+        # SAVE REPLY
         cur.execute(
-            "INSERT INTO chats VALUES (?, ?, ?)",
+            """
+            INSERT INTO chats
+            VALUES (?, ?, ?)
+            """,
             (
                 data.user_id,
                 "assistant",
@@ -472,15 +528,15 @@ Always use the provided Internet Search Results.
         }
 
 
-# =========================
-# ULTRA HUMAN VOICE
-# =========================
+# ====================================
+# VOICE
+# ====================================
 @app.post("/voice")
-def generate_voice(data: VoiceData):
+def voice(data: VoiceData):
 
     try:
 
-        # NO ELEVENLABS KEY
+        # NO KEY
         if not ELEVEN_API_KEY:
 
             return {
@@ -525,6 +581,7 @@ def generate_voice(data: VoiceData):
 
             f.write(response.content)
 
+        # RETURN AUDIO
         return FileResponse(
             "voice.mp3",
             media_type="audio/mpeg"
