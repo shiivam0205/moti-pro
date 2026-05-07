@@ -29,10 +29,27 @@ export default function App() {
   const speak = (text) => {
 
     const msg = new SpeechSynthesisUtterance(text);
-
     msg.rate = 1;
     msg.pitch = 1;
     window.speechSynthesis.speak(msg);
+  };
+
+  // ================= STREAM EFFECT =================
+  const typeEffect = (text, callback) => {
+
+    let i = 0;
+    let temp = "";
+
+    const interval = setInterval(() => {
+
+      temp += text[i];
+      i++;
+
+      callback(temp);
+
+      if (i >= text.length) clearInterval(interval);
+
+    }, 15);
   };
 
   // ================= SEND =================
@@ -57,7 +74,19 @@ export default function App() {
 
     const data = await res.json();
 
-    setChat([...updated, { role: "ai", text: data.reply }]);
+    let streamingMsg = { role: "ai", text: "" };
+
+    setChat([...updated, streamingMsg]);
+
+    typeEffect(data.reply, (val) => {
+
+      setChat(prev => {
+        const copy = [...prev];
+        copy[copy.length - 1] = { role: "ai", text: val };
+        return copy;
+      });
+
+    });
 
     speak(data.reply);
   };
@@ -66,23 +95,18 @@ export default function App() {
   if (!userId) {
     return (
       <div style={styles.login}>
-        <h2>MOTI ULTRA AI</h2>
+        <h1>MOTI GOD MODE AI</h1>
 
-        <input
-          style={styles.input}
-          placeholder="username"
+        <input style={styles.input} placeholder="username"
           onChange={(e)=>setUsername(e.target.value)}
         />
 
-        <input
-          style={styles.input}
-          type="password"
-          placeholder="password"
+        <input style={styles.input} type="password" placeholder="password"
           onChange={(e)=>setPassword(e.target.value)}
         />
 
         <button style={styles.btn} onClick={login}>
-          Login
+          Enter AI
         </button>
       </div>
     );
@@ -92,16 +116,15 @@ export default function App() {
   return (
     <div style={styles.app}>
 
-      <div style={styles.header}>MOTI ULTRA CHATGPT</div>
+      <div style={styles.header}>MOTI GOD MODE AI</div>
 
       <div style={styles.chat}>
         {chat.map((c,i)=>(
-          <div
-            key={i}
+          <div key={i}
             style={{
               ...styles.msg,
-              alignSelf: c.role === "user" ? "flex-end" : "flex-start",
-              background: c.role === "user" ? "#4a90e2" : "#2a2a2a"
+              alignSelf: c.role==="user"?"flex-end":"flex-start",
+              background: c.role==="user"?"#4a90e2":"#222"
             }}
           >
             {c.text}
@@ -110,11 +133,10 @@ export default function App() {
       </div>
 
       <div style={styles.bottom}>
-        <input
-          style={styles.input}
+        <input style={styles.input}
           value={input}
           onChange={(e)=>setInput(e.target.value)}
-          placeholder="Ask anything..."
+          placeholder="Ask anything in any language..."
         />
 
         <button style={styles.btn} onClick={send}>
@@ -133,21 +155,20 @@ const styles = {
     height: "100vh",
     display: "flex",
     flexDirection: "column",
-    background: "#0d0d0d",
+    background: "#0b0b0b",
     color: "white"
   },
 
   header: {
     padding: 10,
     textAlign: "center",
-    background: "#111",
-    fontWeight: "bold"
+    background: "#111"
   },
 
   chat: {
     flex: 1,
-    overflowY: "auto",
     padding: 10,
+    overflowY: "auto",
     display: "flex",
     flexDirection: "column",
     gap: 8
@@ -179,8 +200,7 @@ const styles = {
     background: "#4a90e2",
     border: "none",
     borderRadius: 8,
-    color: "white",
-    cursor: "pointer"
+    color: "white"
   },
 
   login: {
@@ -190,7 +210,7 @@ const styles = {
     justifyContent: "center",
     alignItems: "center",
     gap: 10,
-    background: "#0d0d0d",
+    background: "#0b0b0b",
     color: "white"
   }
 };
