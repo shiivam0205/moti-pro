@@ -18,11 +18,17 @@ app.add_middleware(
 )
 
 # ---------------- DATABASE ----------------
+# ---------------- DATABASE ----------------
 conn = sqlite3.connect("moti.db", check_same_thread=False)
 cur = conn.cursor()
 
+# RESET OLD BROKEN TABLES
+cur.execute("DROP TABLE IF EXISTS users")
+cur.execute("DROP TABLE IF EXISTS chats")
+
+# CREATE NEW TABLES
 cur.execute("""
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
     user_id TEXT,
     username TEXT,
     password TEXT
@@ -30,7 +36,7 @@ CREATE TABLE IF NOT EXISTS users (
 """)
 
 cur.execute("""
-CREATE TABLE IF NOT EXISTS chats (
+CREATE TABLE chats (
     user_id TEXT,
     role TEXT,
     message TEXT
@@ -38,7 +44,6 @@ CREATE TABLE IF NOT EXISTS chats (
 """)
 
 conn.commit()
-
 # ---------------- GROQ ----------------
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
