@@ -4,7 +4,6 @@ from pydantic import BaseModel
 import sqlite3
 import uuid
 import os
-import requests
 from groq import Groq
 
 app = FastAPI()
@@ -31,6 +30,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 cur.execute("""
 CREATE TABLE IF NOT EXISTS chats (
+    chat_id TEXT,
     user_id TEXT,
     role TEXT,
     message TEXT
@@ -47,25 +47,13 @@ class Login(BaseModel):
 
 class Chat(BaseModel):
     user_id: str
+    chat_id: str
     message: str
-
-# ================= SEARCH AGENT =================
-def web_search(query):
-
-    try:
-        url = f"https://api.duckduckgo.com/?q={query}&format=json"
-        r = requests.get(url, timeout=5)
-        data = r.json()
-
-        return data.get("AbstractText") or "No strong web result found."
-
-    except:
-        return "Search unavailable"
 
 # ================= ROOT =================
 @app.get("/")
 def root():
-    return {"status": "MOTI ULTRA AI ACTIVE"}
+    return {"status": "MOTI CHATGPT CLONE ACTIVE"}
 
 # ================= LOGIN =================
 @app.post("/login")
@@ -92,49 +80,58 @@ def login(data: Login):
 
     return {"user_id": uid}
 
+# ================= CHAT HISTORY LIST =================
+@app.get("/history/{user_id}")
+def history(user_id: str):
+
+    cur.execute(
+        "SELECT DISTINCT chat_id FROM chats WHERE user_id=?",
+        (user_id,)
+    )
+
+    chats = [c[0] for c in cur.fetchall()]
+
+    return {"chats": chats}
+
+# ================= CHAT LOAD =================
+@app.get("/load/{user_id}/{chat_id}")
+def load(user_id: str, chat_id: str):
+
+    cur.execute(
+        "SELECT role, message FROM chats WHERE user_id=? AND chat_id=?",
+        (user_id, chat_id)
+    )
+
+    return {"messages": cur.fetchall()}
+
 # ================= CHAT =================
 @app.post("/chat")
 def chat(data: Chat):
 
-    msg = data.message.lower()
-
-    # save user msg
-    cur.execute("INSERT INTO chats VALUES (?, ?, ?)",
-                (data.user_id, "user", data.message))
+    cur.execute(
+        "INSERT INTO chats VALUES (?, ?, ?, ?)",
+        (data.chat_id, data.user_id, "user", data.message)
+    )
     conn.commit()
 
-    # WEB BROWSING MODE
-    web_data = ""
-    if "search" in msg or "google" in msg or "news" in msg:
-        web_data = web_search(data.message)
-
     cur.execute(
-        "SELECT role, message FROM chats WHERE user_id=? ORDER BY rowid DESC LIMIT 20",
-        (data.user_id,)
+        "SELECT role, message FROM chats WHERE user_id=? AND chat_id=?",
+        (data.user_id, data.chat_id)
     )
 
-    history = cur.fetchall()[::-1]
+    history = cur.fetchall()
 
     messages = [
         {
             "role": "system",
             "content": """
-You are MOTI ULTRA AI.
-
-Rules:
-- Always respond in same language
-- Be natural human assistant
-- Use web data if available
-- Never say offline
+You are MOTI AI ChatGPT clone.
+- respond naturally
+- multilingual
+- human tone
 """
         }
     ]
-
-    if web_data:
-        messages.append({
-            "role": "system",
-            "content": f"Web Result: {web_data}"
-        })
 
     for r, m in history:
         messages.append({
@@ -147,14 +144,16 @@ Rules:
     res = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=messages,
-        temperature=0.85,
+        temperature=0.8,
         max_tokens=600
     )
 
     reply = res.choices[0].message.content
 
-    cur.execute("INSERT INTO chats VALUES (?, ?, ?)",
-                (data.user_id, "assistant", reply))
+    cur.execute(
+        "INSERT INTO chats VALUES (?, ?, ?, ?)",
+        (data.chat_id, data.user_id, "assistant", reply)
+    )
 
     conn.commit()
 
