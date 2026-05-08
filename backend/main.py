@@ -11,8 +11,7 @@ def home():
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.get_json()
-    msg = data.get("message", "")
 
     return jsonify({
-        "reply": f"MOTI: {msg}"
+        "reply": f"MOTI: {data.get('message', '')}"
     })
