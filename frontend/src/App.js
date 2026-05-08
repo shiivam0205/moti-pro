@@ -1,29 +1,57 @@
 import React, { useState, useEffect, useRef } from "react";
 
-const API = process.env.REACT_APP_API || "http://localhost:5000";
+const API = process.env.REACT_APP_API;
 
 export default function App() {
 
+  const [user, setUser] = useState("");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [chats, setChats] = useState([]);
 
   const endRef = useRef(null);
 
+  // ================= AUTO SCROLL =================
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // ================= LOGIN =================
+  useEffect(() => {
+    const saved = localStorage.getItem("user");
+    if (saved) {
+      setUser(saved);
+      loadHistory(saved);
+    }
+  }, []);
+
+  const login = (name) => {
+    setUser(name);
+    localStorage.setItem("user", name);
+    loadHistory(name);
+  };
+
+  // ================= LOAD HISTORY =================
+  const loadHistory = async (u) => {
+    try {
+      const res = await fetch(`${API}/history/${u}`);
+      const data = await res.json();
+      setChats(data);
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
+  // ================= NEW CHAT =================
+  const newChat = () => {
+    setMessages([]);
+  };
+
   // ================= VOICE =================
   const speak = (text) => {
-
     window.speechSynthesis.cancel();
 
     const utter = new SpeechSynthesisUtterance(text);
-
-    utter.rate = 1;
-    utter.pitch = 1;
-    utter.volume = 1;
 
     const voices = speechSynthesis.getVoices();
 
@@ -32,14 +60,16 @@ export default function App() {
       voices.find(v => v.lang === "hi-IN") ||
       voices[0];
 
+    utter.rate = 1;
+    utter.pitch = 1;
+
     speechSynthesis.speak(utter);
   };
 
-  // ================= SEND =================
-  const send = async (customText) => {
+  // ================= SEND MESSAGE =================
+  const send = async (text) => {
 
-    const text = customText || input;
-    if (!text.trim()) return;
+    if (!text) return;
 
     setInput("");
 
@@ -48,8 +78,6 @@ export default function App() {
       { role: "user", text }
     ]);
 
-    setLoading(true);
-
     try {
 
       const res = await fetch(`${API}/chat`, {
@@ -57,7 +85,10 @@ export default function App() {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ message: text })
+        body: JSON.stringify({
+          user,
+          message: text
+        })
       });
 
       const data = await res.json();
@@ -69,16 +100,11 @@ export default function App() {
 
       speak(data.reply);
 
+      loadHistory(user);
+
     } catch (err) {
-
-      setMessages(prev => [
-        ...prev,
-        { role: "ai", text: "Backend error" }
-      ]);
-
+      console.log(err);
     }
-
-    setLoading(false);
   };
 
   // ================= MIC =================
@@ -90,70 +116,121 @@ export default function App() {
       window.SpeechRecognition ||
       window.webkitSpeechRecognition;
 
-    if (!SpeechRecognition) return alert("Mic not supported");
+    if (!SpeechRecognition) return;
 
-    const recognition = new SpeechRecognition();
+    const mic = new SpeechRecognition();
 
-    recognition.lang = "en-IN";
+    mic.lang = "en-IN";
 
-    recognition.onresult = (e) => {
+    mic.onresult = (e) => {
       const text = e.results[0][0].transcript;
       send(text);
     };
 
-    recognition.start();
+    mic.start();
   };
 
-  return (
+  // ================= LOGIN SCREEN =================
+  if (!user) {
 
+    return (
+      <div style={styles.login}>
+        <h2>MOTI AI</h2>
+
+        <input
+          placeholder="Enter username"
+          onKeyDown={(e) =>
+            e.key === "Enter" && login(e.target.value)
+          }
+        />
+      </div>
+    );
+  }
+
+  // ================= UI =================
+  return (
     <div style={styles.container}>
 
-      {/* HEADER */}
-      <div style={styles.header}>
-        MOTI AI
-      </div>
+      {/* SIDEBAR */}
+      <div style={styles.sidebar}>
 
-      {/* CHAT */}
-      <div style={styles.chatBox}>
+        <button onClick={newChat}>
+          + New Chat
+        </button>
 
-        {messages.map((m, i) => (
+        {chats.map((c, i) => (
           <div
             key={i}
-            style={{
-              ...styles.msg,
-              alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-              background: m.role === "user" ? "#4f46e5" : "#222"
-            }}
+            style={styles.chatItem}
+            onClick={() =>
+              setMessages([
+                { role: "user", text: c.message },
+                { role: "ai", text: c.response }
+              ])
+            }
           >
-            {m.text}
+            {c.message}
           </div>
         ))}
 
-        <div ref={endRef} />
-
       </div>
 
-      {/* INPUT */}
-      <div style={styles.inputBox}>
+      {/* CHAT AREA */}
+      <div style={styles.chatArea}>
 
-        <button onClick={startMic} style={styles.btn}>
-          🎤
-        </button>
+        <div style={styles.header}>
+          MOTI AI
+        </div>
 
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          style={styles.input}
-          placeholder="Ask MOTI..."
-          onKeyDown={(e) => e.key === "Enter" && send()}
-        />
+        <div style={styles.messages}>
 
-        <button onClick={() => send()} style={styles.btn}>
-          ➤
-        </button>
+          {messages.map((m, i) => (
+            <div
+              key={i}
+              style={{
+                ...styles.msg,
+                alignSelf:
+                  m.role === "user"
+                    ? "flex-end"
+                    : "flex-start",
+                background:
+                  m.role === "user"
+                    ? "#4f46e5"
+                    : "#222"
+              }}
+            >
+              {m.text}
+            </div>
+          ))}
+
+          <div ref={endRef} />
+
+        </div>
+
+        {/* INPUT */}
+        <div style={styles.inputBox}>
+
+          <button onClick={startMic}>
+            🎤
+          </button>
+
+          <input
+            value={input}
+            onChange={(e) =>
+              setInput(e.target.value)
+            }
+            onKeyDown={(e) =>
+              e.key === "Enter" && send(input)
+            }
+          />
+
+          <button onClick={() => send(input)}>
+            ➤
+          </button>
+
+        </div>
 
       </div>
-
     </div>
   );
 }
@@ -162,21 +239,32 @@ export default function App() {
 const styles = {
 
   container: {
+    display: "flex",
     height: "100vh",
     background: "#0f0f0f",
-    display: "flex",
-    flexDirection: "column",
     color: "white"
   },
 
-  header: {
-    padding: 15,
+  sidebar: {
+    width: 250,
     background: "#111",
-    fontWeight: "bold",
+    padding: 10,
+    overflowY: "auto"
+  },
+
+  chatArea: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column"
+  },
+
+  header: {
+    padding: 10,
+    background: "#111",
     textAlign: "center"
   },
 
-  chatBox: {
+  messages: {
     flex: 1,
     padding: 10,
     display: "flex",
@@ -197,19 +285,22 @@ const styles = {
     background: "#111"
   },
 
-  input: {
-    flex: 1,
-    padding: 10,
-    borderRadius: 10,
-    border: "none",
-    outline: "none"
+  login: {
+    height: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+    background: "#0f0f0f",
+    color: "white"
   },
 
-  btn: {
-    margin: "0 5px",
-    padding: 10,
-    borderRadius: 10,
-    border: "none",
+  chatItem: {
+    padding: 8,
+    marginTop: 5,
+    background: "#222",
+    borderRadius: 5,
     cursor: "pointer"
   }
 };

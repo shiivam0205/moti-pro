@@ -1,131 +1,80 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_sqlalchemy import SQLAlchemy
 import requests
 import os
-from openai import OpenAI
-import base64
-import os
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-@app.route("/tts-stream", methods=["POST"])
-def tts_stream():
-
-    try:
-
-        data = request.get_json()
-        text = data.get("text", "")
-
-        response = client.audio.speech.create(
-            model="gpt-4o-mini-tts",
-            voice="alloy",
-            input=text,
-            format="mp3"
-        )
-
-        audio_bytes = response.content
-        audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
-
-        return jsonify({
-            "audio": audio_base64
-        })
-
-    except Exception as e:
-        return jsonify({
-            "error": str(e)
-        })
 
 app = Flask(__name__)
 CORS(app)
 
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///moti.db"
+db = SQLAlchemy(app)
+
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
+# ================= DB =================
+class Chat(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user = db.Column(db.String(100))
+    message = db.Column(db.Text)
+    response = db.Column(db.Text)
+
+with app.app_context():
+    db.create_all()
+
+# ================= HOME =================
 @app.route("/")
 def home():
-    return jsonify({
-        "status": "online",
-        "brain": "active"
-    })
+    return {"status": "MOTI online"}
 
+# ================= CHAT =================
 @app.route("/chat", methods=["POST"])
 def chat():
 
-    try:
+    data = request.json
+    user = data.get("user")
+    message = data.get("message")
 
-        data = request.get_json()
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
-        user_message = data.get("message", "")
+    payload = {
+        "model": "llama-3.3-70b-versatile",
+        "messages": [
+            {"role": "system", "content": "You are MOTI AI ChatGPT clone."},
+            {"role": "user", "content": message}
+        ]
+    }
 
-        if not user_message:
-            return jsonify({
-                "reply": "Please type something."
-            })
+    res = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers=headers,
+        json=payload
+    )
 
-        if not GROQ_API_KEY:
-            return jsonify({
-                "reply": "Missing GROQ API KEY in Render environment."
-            })
+    reply = res.json()["choices"][0]["message"]["content"]
 
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
+    # SAVE CHAT
+    chat = Chat(user=user, message=message, response=reply)
+    db.session.add(chat)
+    db.session.commit()
 
-        payload = {
-    "model": "llama-3.3-70b-versatile",
-    "messages": [
+    return {"reply": reply}
+
+# ================= HISTORY =================
+@app.route("/history/<user>")
+def history(user):
+
+    chats = Chat.query.filter_by(user=user).all()
+
+    return jsonify([
         {
-            "role": "system",
-            "content": "You are MOTI AI. Detect language automatically and reply in same language as user. Never force English."
-        },
-        {
-            "role": "user",
-            "content": user_message
-        }
-    ],
-    "temperature": 0.7,
-    "max_tokens": 1024
-}
-                {
-                    "role": "user",
-                    "content": user_message
-                }
-            ],
-            "temperature": 0.7,
-            "max_tokens": 1024
-        }
-
-        response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=60
-        )
-
-        print("STATUS:", response.status_code)
-        print("TEXT:", response.text)
-
-        if response.status_code != 200:
-
-            return jsonify({
-                "reply": f"Groq API Error: {response.text}"
-            })
-
-        result = response.json()
-
-        reply = result["choices"][0]["message"]["content"]
-
-        return jsonify({
-            "reply": reply
-        })
-
-    except Exception as e:
-
-        print("SERVER ERROR:", str(e))
-
-        return jsonify({
-            "reply": f"AI brain error: {str(e)}"
-        })
+            "message": c.message,
+            "response": c.response
+        } for c in chats
+    ])
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run()
