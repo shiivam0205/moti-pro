@@ -1,10 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 
 const API = "https://moti-proo.onrender.com";
 
 export default function App() {
 
-  // ================= AUTH =================
+  // ================= LOGIN =================
 
   const [loggedIn, setLoggedIn] = useState(
     localStorage.getItem("moti_login") === "true"
@@ -13,38 +13,42 @@ export default function App() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
+  // ================= USER STORAGE =================
+
+  const currentUser =
+    localStorage.getItem("moti_current_user") || "";
+
   // ================= CHAT =================
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  // ================= CHAT HISTORY =================
+  // ================= CHATS =================
 
   const [chatList, setChatList] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
 
-  // ================= VOICE =================
+  const endRef = useRef(null);
 
-  const recognitionRef = useRef(null);
-  const messagesEndRef = useRef(null);
-
-  // ================= LOAD USER =================
+  // ================= LOAD USER CHATS =================
 
   useEffect(() => {
 
     if (!loggedIn) return;
 
-    const savedChats = JSON.parse(
-      localStorage.getItem("moti_chats") || "[]"
-    );
+    const saved =
+      JSON.parse(
+        localStorage.getItem(
+          `moti_chats_${currentUser}`
+        ) || "[]"
+      );
 
-    setChatList(savedChats);
+    setChatList(saved);
 
-    if (savedChats.length > 0) {
+    if (saved.length > 0) {
 
-      setCurrentChatId(savedChats[0].id);
-      setMessages(savedChats[0].messages);
+      setCurrentChatId(saved[0].id);
+      setMessages(saved[0].messages);
 
     } else {
 
@@ -54,43 +58,26 @@ export default function App() {
 
   }, [loggedIn]);
 
+  // ================= SAVE CHATS =================
+
+  useEffect(() => {
+
+    if (!loggedIn) return;
+
+    localStorage.setItem(
+      `moti_chats_${currentUser}`,
+      JSON.stringify(chatList)
+    );
+
+  }, [chatList]);
+
   // ================= AUTO SCROLL =================
 
   useEffect(() => {
 
-    messagesEndRef.current?.scrollIntoView({
+    endRef.current?.scrollIntoView({
       behavior: "smooth",
     });
-
-  }, [messages]);
-
-  // ================= SAVE CHAT =================
-
-  useEffect(() => {
-
-    if (!currentChatId) return;
-
-    const updated = chatList.map((chat) => {
-
-      if (chat.id === currentChatId) {
-
-        return {
-          ...chat,
-          messages,
-        };
-
-      }
-
-      return chat;
-
-    });
-
-    setChatList(updated);
-
-    localStorage.setItem(
-      "moti_chats",
-      JSON.stringify(updated)
-    );
 
   }, [messages]);
 
@@ -104,7 +91,10 @@ export default function App() {
     }
 
     localStorage.setItem("moti_login", "true");
-    localStorage.setItem("moti_user", username);
+    localStorage.setItem(
+      "moti_current_user",
+      username
+    );
 
     setLoggedIn(true);
 
@@ -117,6 +107,9 @@ export default function App() {
     localStorage.removeItem("moti_login");
 
     setLoggedIn(false);
+
+    setMessages([]);
+    setChatList([]);
 
   };
 
@@ -134,55 +127,65 @@ export default function App() {
 
     setChatList(updated);
 
-    localStorage.setItem(
-      "moti_chats",
-      JSON.stringify(updated)
-    );
-
     setCurrentChatId(newChat.id);
+
     setMessages([]);
 
   };
 
-  // ================= OPEN OLD CHAT =================
+  // ================= OPEN CHAT =================
 
   const openChat = (chat) => {
 
     setCurrentChatId(chat.id);
+
     setMessages(chat.messages);
 
   };
 
-  // ================= VOICE OUTPUT =================
+  // ================= SAVE CURRENT CHAT =================
 
-  const speakText = (text) => {
+  const updateCurrentChat = (newMessages) => {
+
+    const updated = chatList.map((chat) => {
+
+      if (chat.id === currentChatId) {
+
+        return {
+          ...chat,
+          title:
+            newMessages[0]?.text?.slice(0, 20) ||
+            "New Chat",
+          messages: newMessages,
+        };
+
+      }
+
+      return chat;
+
+    });
+
+    setChatList(updated);
+
+  };
+
+  // ================= SPEAK =================
+
+  const speak = (text) => {
 
     speechSynthesis.cancel();
 
-    const utter = new SpeechSynthesisUtterance(text);
+    const utter =
+      new SpeechSynthesisUtterance(text);
 
     utter.rate = 1;
     utter.pitch = 1;
-    utter.volume = 1;
-
-    const voices = speechSynthesis.getVoices();
-
-    if (voices.length > 0) {
-
-      const preferred =
-        voices.find((v) =>
-          v.name.toLowerCase().includes("female")
-        ) || voices[0];
-
-      utter.voice = preferred;
-
-    }
 
     speechSynthesis.speak(utter);
 
   };
 
-  // ================= SEND MESSAGE =================
+  // ================= SEND =================
 
   const sendMessage = async (customText = null) => {
 
@@ -195,13 +198,13 @@ export default function App() {
       text,
     };
 
-    const updatedMessages = [...messages, userMsg];
+    const newMessages = [...messages, userMsg];
 
-    setMessages(updatedMessages);
+    setMessages(newMessages);
+
+    updateCurrentChat(newMessages);
 
     setInput("");
-
-    setLoading(true);
 
     try {
 
@@ -218,10 +221,7 @@ export default function App() {
       const data = await res.json();
 
       const reply =
-        data.reply ||
-        "Hello, I am MOTI AI.";
-
-      let animatedText = "";
+        data.reply || "Hello from MOTI AI";
 
       const botMsg = {
         role: "assistant",
@@ -230,9 +230,11 @@ export default function App() {
 
       setMessages((prev) => [...prev, botMsg]);
 
+      let current = "";
+
       for (let i = 0; i < reply.length; i++) {
 
-        animatedText += reply[i];
+        current += reply[i];
 
         await new Promise((r) =>
           setTimeout(r, 10)
@@ -244,7 +246,7 @@ export default function App() {
 
           copy[copy.length - 1] = {
             role: "assistant",
-            text: animatedText,
+            text: current,
           };
 
           return copy;
@@ -253,38 +255,17 @@ export default function App() {
 
       }
 
-      speakText(reply);
+      const finalMessages = [
+        ...newMessages,
+        {
+          role: "assistant",
+          text: reply,
+        },
+      ];
 
-      // update title
+      updateCurrentChat(finalMessages);
 
-      const updatedChats = chatList.map((chat) => {
-
-        if (chat.id === currentChatId) {
-
-          return {
-            ...chat,
-            title: text.slice(0, 25),
-            messages: [
-              ...updatedMessages,
-              {
-                role: "assistant",
-                text: reply,
-              },
-            ],
-          };
-
-        }
-
-        return chat;
-
-      });
-
-      setChatList(updatedChats);
-
-      localStorage.setItem(
-        "moti_chats",
-        JSON.stringify(updatedChats)
-      );
+      speak(reply);
 
     } catch (err) {
 
@@ -299,8 +280,6 @@ export default function App() {
       ]);
 
     }
-
-    setLoading(false);
 
   };
 
@@ -317,16 +296,15 @@ export default function App() {
       return;
     }
 
-    const recognition = new SpeechRecognition();
+    const recognition =
+      new SpeechRecognition();
 
     recognition.lang = "en-US";
 
-    recognition.interimResults = false;
-
-    recognition.onresult = (event) => {
+    recognition.onresult = (e) => {
 
       const text =
-        event.results[0][0].transcript;
+        e.results[0][0].transcript;
 
       sendMessage(text);
 
@@ -334,11 +312,9 @@ export default function App() {
 
     recognition.start();
 
-    recognitionRef.current = recognition;
-
   };
 
-  // ================= LOGIN SCREEN =================
+  // ================= LOGIN UI =================
 
   if (!loggedIn) {
 
@@ -346,30 +322,27 @@ export default function App() {
       <div
         style={{
           height: "100vh",
-          background:
-            "linear-gradient(135deg,#0f172a,#1e1b4b,#312e81)",
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
+          background:
+            "linear-gradient(135deg,#0f172a,#1e1b4b)",
           fontFamily: "Arial",
         }}
       >
         <div
           style={{
             width: "320px",
-            background: "rgba(255,255,255,0.08)",
             padding: "30px",
-            borderRadius: "24px",
+            borderRadius: "20px",
+            background: "rgba(255,255,255,0.1)",
             backdropFilter: "blur(15px)",
-            boxShadow:
-              "0 0 30px rgba(0,0,0,0.4)",
           }}
         >
           <h1
             style={{
-              color: "white",
               textAlign: "center",
-              marginBottom: "25px",
+              color: "white",
             }}
           >
             MOTI AI
@@ -384,10 +357,9 @@ export default function App() {
             style={{
               width: "100%",
               padding: "12px",
-              marginBottom: "15px",
-              borderRadius: "12px",
+              marginTop: "20px",
+              borderRadius: "10px",
               border: "none",
-              outline: "none",
             }}
           />
 
@@ -401,10 +373,9 @@ export default function App() {
             style={{
               width: "100%",
               padding: "12px",
-              marginBottom: "20px",
-              borderRadius: "12px",
+              marginTop: "15px",
+              borderRadius: "10px",
               border: "none",
-              outline: "none",
             }}
           />
 
@@ -412,14 +383,15 @@ export default function App() {
             onClick={login}
             style={{
               width: "100%",
+              marginTop: "20px",
               padding: "12px",
-              borderRadius: "12px",
               border: "none",
+              borderRadius: "10px",
               background:
                 "linear-gradient(90deg,#7c3aed,#2563eb)",
               color: "white",
-              fontWeight: "bold",
               cursor: "pointer",
+              fontWeight: "bold",
             }}
           >
             Login
@@ -452,7 +424,6 @@ export default function App() {
           padding: "15px",
           display: "flex",
           flexDirection: "column",
-          borderRight: "1px solid #222",
         }}
       >
 
@@ -460,12 +431,11 @@ export default function App() {
           onClick={createNewChat}
           style={{
             padding: "12px",
-            borderRadius: "12px",
             border: "none",
+            borderRadius: "12px",
             background:
               "linear-gradient(90deg,#7c3aed,#2563eb)",
             color: "white",
-            fontWeight: "bold",
             cursor: "pointer",
             marginBottom: "15px",
           }}
@@ -480,14 +450,15 @@ export default function App() {
           }}
         >
           {chatList.map((chat) => (
+
             <div
               key={chat.id}
               onClick={() => openChat(chat)}
               style={{
                 padding: "12px",
-                borderRadius: "12px",
-                marginBottom: "10px",
+                borderRadius: "10px",
                 cursor: "pointer",
+                marginBottom: "10px",
                 background:
                   chat.id === currentChatId
                     ? "#1e293b"
@@ -496,6 +467,7 @@ export default function App() {
             >
               {chat.title}
             </div>
+
           ))}
         </div>
 
@@ -503,8 +475,8 @@ export default function App() {
           onClick={logout}
           style={{
             padding: "12px",
-            borderRadius: "12px",
             border: "none",
+            borderRadius: "10px",
             background: "#dc2626",
             color: "white",
             cursor: "pointer",
@@ -512,9 +484,10 @@ export default function App() {
         >
           Logout
         </button>
+
       </div>
 
-      {/* CHAT AREA */}
+      {/* CHAT */}
 
       <div
         style={{
@@ -529,10 +502,10 @@ export default function App() {
         <div
           style={{
             padding: "18px",
+            background: "#111827",
+            borderBottom: "1px solid #222",
             fontSize: "22px",
             fontWeight: "bold",
-            borderBottom: "1px solid #222",
-            background: "#111827",
           }}
         >
           MOTI AI ✨
@@ -547,6 +520,7 @@ export default function App() {
             padding: "20px",
           }}
         >
+
           {messages.map((msg, index) => (
 
             <div
@@ -565,8 +539,7 @@ export default function App() {
                 style={{
                   maxWidth: "75%",
                   padding: "14px",
-                  borderRadius: "18px",
-                  lineHeight: "1.5",
+                  borderRadius: "16px",
                   background:
                     msg.role === "user"
                       ? "#2563eb"
@@ -580,17 +553,8 @@ export default function App() {
 
           ))}
 
-          {loading && (
-            <div
-              style={{
-                opacity: 0.7,
-              }}
-            >
-              MOTI typing...
-            </div>
-          )}
+          <div ref={endRef}></div>
 
-          <div ref={messagesEndRef}></div>
         </div>
 
         {/* INPUT */}
@@ -638,7 +602,6 @@ export default function App() {
               outline: "none",
               background: "#1e293b",
               color: "white",
-              fontSize: "15px",
             }}
           />
 
@@ -646,19 +609,20 @@ export default function App() {
             onClick={() => sendMessage()}
             style={{
               padding: "14px 20px",
-              borderRadius: "14px",
               border: "none",
+              borderRadius: "14px",
               background: "#2563eb",
               color: "white",
               cursor: "pointer",
-              fontWeight: "bold",
             }}
           >
             Send
           </button>
 
         </div>
+
       </div>
+
     </div>
   );
 }
