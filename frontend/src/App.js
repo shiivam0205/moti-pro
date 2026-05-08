@@ -29,6 +29,11 @@ export default function App() {
   const [currentChatId, setCurrentChatId] = useState(null);
 
   const endRef = useRef(null);
+const endRef = useRef(null);
+
+useEffect(() => {
+  speechSynthesis.getVoices();
+}, []);
 
   // ================= LOAD USER CHATS =================
 
@@ -173,17 +178,87 @@ export default function App() {
 
   const speak = (text) => {
 
-    speechSynthesis.cancel();
+  try {
+
+    window.speechSynthesis.cancel();
 
     const utter =
       new SpeechSynthesisUtterance(text);
 
-    utter.rate = 1;
+    // ================= LANGUAGE DETECTION =================
+
+    const hindiRegex =
+      /[\u0900-\u097F]/;
+
+    const isHindi =
+      hindiRegex.test(text);
+
+    // ================= LANGUAGE =================
+
+    utter.lang = isHindi
+      ? "hi-IN"
+      : "en-US";
+
+    // ================= HUMAN SETTINGS =================
+
+    utter.rate = 0.95;
     utter.pitch = 1;
+    utter.volume = 1;
+
+    // ================= BEST VOICE =================
+
+    const voices =
+      speechSynthesis.getVoices();
+
+    let selectedVoice = null;
+
+    if (isHindi) {
+
+      selectedVoice =
+        voices.find(v =>
+          v.lang === "hi-IN"
+        ) ||
+
+        voices.find(v =>
+          v.lang.includes("hi")
+        ) ||
+
+        voices.find(v =>
+          v.name.toLowerCase().includes("india")
+        );
+
+    } else {
+
+      selectedVoice =
+        voices.find(v =>
+          v.name.includes("Google US English")
+        ) ||
+
+        voices.find(v =>
+          v.name.includes("Microsoft Aria")
+        ) ||
+
+        voices.find(v =>
+          v.lang === "en-US"
+        );
+
+    }
+
+    if (selectedVoice) {
+      utter.voice = selectedVoice;
+    }
+
+    // ================= SPEAK =================
 
     speechSynthesis.speak(utter);
 
-  };
+  } catch (err) {
+
+    console.log(err);
+
+  }
+
+};
 
   // ================= SEND =================
 
