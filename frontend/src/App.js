@@ -15,29 +15,57 @@ export default function App() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // ================= LOGIN ONLY =================
-  const handleLogin = (e) => {
-    if (e.key === "Enter" && e.target.value.trim()) {
-      setUser(e.target.value.trim());
+  // ================= LOGIN LOAD =================
+  useEffect(() => {
+    const saved = localStorage.getItem("user");
+    if (saved) {
+      setUser(saved);
     }
+  }, []);
+
+  // ================= LOGIN =================
+  const login = (name) => {
+    if (!name.trim()) return;
+    setUser(name);
+    localStorage.setItem("user", name);
+  };
+
+  // ================= LOGOUT =================
+  const logout = () => {
+    setUser("");
+    localStorage.removeItem("user");
+    setMessages([]);
   };
 
   // ================= VOICE =================
   const speak = (text) => {
+
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    speechSynthesis.speak(u);
+
+    const utter = new SpeechSynthesisUtterance(text);
+
+    const voices = speechSynthesis.getVoices();
+
+    utter.voice =
+      voices.find(v => v.lang === "en-US") ||
+      voices.find(v => v.lang === "hi-IN") ||
+      voices[0];
+
+    utter.rate = 1;
+    utter.pitch = 1;
+
+    speechSynthesis.speak(utter);
   };
 
-  // ================= SEND MESSAGE (FIXED) =================
-  const send = async (text) => {
+  // ================= SEND (FIXED - NO NEW CHAT ISSUE) =================
+  const send = async () => {
 
-    const msg = text || input;
+    const msg = input;
     if (!msg.trim()) return;
 
     setInput("");
 
-    // ❗ IMPORTANT FIX: SAME CHAT, NOT NEW CHAT
+    // ❌ FIX: ALWAYS APPEND (NOT RESET OR CREATE NEW CHAT)
     setMessages(prev => [
       ...prev,
       { role: "user", text: msg }
@@ -78,6 +106,8 @@ export default function App() {
   // ================= MIC =================
   const startMic = () => {
 
+    window.speechSynthesis.cancel();
+
     const SpeechRecognition =
       window.SpeechRecognition ||
       window.webkitSpeechRecognition;
@@ -89,35 +119,67 @@ export default function App() {
     mic.lang = "en-IN";
 
     mic.onresult = (e) => {
-      send(e.results[0][0].transcript);
+      setInput(e.results[0][0].transcript);
     };
 
     mic.start();
   };
 
-  // ================= LOGIN SCREEN (FIXED SIMPLE UI) =================
+  // ================= LOGIN UI FIXED =================
   if (!user) {
-    return (
-      <div style={styles.login}>
-        <h2 style={{ color: "#4f46e5" }}>MOTI AI</h2>
 
-        <input
-          placeholder="Enter username"
-          style={styles.input}
-          onKeyDown={handleLogin}
-        />
+    return (
+      <div style={styles.loginBg}>
+
+        <div style={styles.loginBox}>
+
+          <h2 style={{ color: "#4f46e5" }}>MOTI AI</h2>
+
+          <p style={{ color: "#aaa" }}>
+            Enter your username to continue
+          </p>
+
+          <input
+            placeholder="Username"
+            style={styles.loginInput}
+            onKeyDown={(e) =>
+              e.key === "Enter" && login(e.target.value)
+            }
+          />
+
+          <button
+            style={styles.loginBtn}
+            onClick={(e) =>
+              login(
+                document.querySelector("input")?.value
+              )
+            }
+          >
+            Login
+          </button>
+
+        </div>
+
       </div>
     );
   }
 
-  // ================= CHAT UI =================
+  // ================= CHAT UI (UNCHANGED STYLE) =================
   return (
     <div style={styles.container}>
 
+      {/* HEADER */}
       <div style={styles.header}>
+
         MOTI AI
+
+        <button onClick={logout} style={styles.logout}>
+          Logout
+        </button>
+
       </div>
 
+      {/* CHAT */}
       <div style={styles.chatBox}>
 
         {messages.map((m, i) => (
@@ -132,7 +194,7 @@ export default function App() {
               background:
                 m.role === "user"
                   ? "#4f46e5"
-                  : "#222"
+                  : "#1f1f1f"
             }}
           >
             {m.text}
@@ -143,6 +205,7 @@ export default function App() {
 
       </div>
 
+      {/* INPUT */}
       <div style={styles.inputBox}>
 
         <button onClick={startMic} style={styles.btn}>
@@ -152,12 +215,14 @@ export default function App() {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && send(input)}
-          style={styles.input}
           placeholder="Ask MOTI..."
+          style={styles.input}
+          onKeyDown={(e) =>
+            e.key === "Enter" && send()
+          }
         />
 
-        <button onClick={() => send(input)} style={styles.btn}>
+        <button onClick={send} style={styles.btn}>
           ➤
         </button>
 
@@ -167,7 +232,7 @@ export default function App() {
   );
 }
 
-// ================= SIMPLE STYLES =================
+// ================= STYLES =================
 const styles = {
 
   container: {
@@ -181,8 +246,18 @@ const styles = {
   header: {
     padding: 15,
     background: "#111",
-    textAlign: "center",
-    fontWeight: "bold"
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+
+  logout: {
+    background: "#ef4444",
+    color: "white",
+    border: "none",
+    padding: "5px 10px",
+    borderRadius: 5,
+    cursor: "pointer"
   },
 
   chatBox: {
@@ -220,15 +295,43 @@ const styles = {
     borderRadius: 10,
     border: "none",
     background: "#4f46e5",
-    color: "white"
+    color: "white",
+    cursor: "pointer"
   },
 
-  login: {
+  // LOGIN UI FIX
+  loginBg: {
     height: "100vh",
     display: "flex",
-    flexDirection: "column",
     justifyContent: "center",
     alignItems: "center",
-    background: "#0f0f0f"
+    background: "linear-gradient(135deg,#0f0f0f,#1a1a2e)"
+  },
+
+  loginBox: {
+    padding: 30,
+    background: "#111",
+    borderRadius: 12,
+    textAlign: "center"
+  },
+
+  loginInput: {
+    padding: 10,
+    width: "100%",
+    marginTop: 10,
+    borderRadius: 8,
+    border: "none",
+    outline: "none"
+  },
+
+  loginBtn: {
+    marginTop: 10,
+    padding: 10,
+    width: "100%",
+    background: "#4f46e5",
+    border: "none",
+    color: "white",
+    borderRadius: 8,
+    cursor: "pointer"
   }
 };
