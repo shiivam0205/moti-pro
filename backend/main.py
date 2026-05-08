@@ -2,6 +2,38 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import os
+from openai import OpenAI
+import base64
+import os
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+@app.route("/tts-stream", methods=["POST"])
+def tts_stream():
+
+    try:
+
+        data = request.get_json()
+        text = data.get("text", "")
+
+        response = client.audio.speech.create(
+            model="gpt-4o-mini-tts",
+            voice="alloy",
+            input=text,
+            format="mp3"
+        )
+
+        audio_bytes = response.content
+        audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+
+        return jsonify({
+            "audio": audio_base64
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        })
 
 app = Flask(__name__)
 CORS(app)
@@ -40,15 +72,20 @@ def chat():
         }
 
         payload = {
-            "model": "llama-3.3-70b-versatile",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are MOTI AI, a futuristic AI assistant "
-                        "that replies naturally and intelligently."
-                    )
-                },
+    "model": "llama-3.3-70b-versatile",
+    "messages": [
+        {
+            "role": "system",
+            "content": "You are MOTI AI. Detect language automatically and reply in same language as user. Never force English."
+        },
+        {
+            "role": "user",
+            "content": user_message
+        }
+    ],
+    "temperature": 0.7,
+    "max_tokens": 1024
+}
                 {
                     "role": "user",
                     "content": user_message

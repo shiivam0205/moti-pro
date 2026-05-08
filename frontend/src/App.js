@@ -1,677 +1,215 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
-const API = "https://moti-proo.onrender.com";
+const API = process.env.REACT_APP_API || "http://localhost:5000";
 
 export default function App() {
 
-  // ================= LOGIN =================
-
-  const [loggedIn, setLoggedIn] = useState(
-    localStorage.getItem("moti_login") === "true"
-  );
-
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-
-  // ================= USER STORAGE =================
-
-  const currentUser =
-    localStorage.getItem("moti_current_user") || "";
-
-  // ================= CHAT =================
-
-  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-
-  // ================= CHATS =================
-
-  const [chatList, setChatList] = useState([]);
-  const [currentChatId, setCurrentChatId] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   const endRef = useRef(null);
-const endRef = useRef(null);
-
-useEffect(() => {
-
-  const stopIfUserSpeaks = () => {
-    window.speechSynthesis.cancel();
-  };
-
-  window.addEventListener("keydown", stopIfUserSpeaks);
-  window.addEventListener("mousedown", stopIfUserSpeaks);
-  window.addEventListener("touchstart", stopIfUserSpeaks);
-
-  return () => {
-    window.removeEventListener("keydown", stopIfUserSpeaks);
-    window.removeEventListener("mousedown", stopIfUserSpeaks);
-    window.removeEventListener("touchstart", stopIfUserSpeaks);
-  };
-
-}, []);
-
-  // ================= LOAD USER CHATS =================
 
   useEffect(() => {
-
-    if (!loggedIn) return;
-
-    const saved =
-      JSON.parse(
-        localStorage.getItem(
-          `moti_chats_${currentUser}`
-        ) || "[]"
-      );
-
-    setChatList(saved);
-
-    if (saved.length > 0) {
-
-      setCurrentChatId(saved[0].id);
-      setMessages(saved[0].messages);
-
-    } else {
-
-      createNewChat();
-
-    }
-
-  }, [loggedIn]);
-
-  // ================= SAVE CHATS =================
-
-  useEffect(() => {
-
-    if (!loggedIn) return;
-
-    localStorage.setItem(
-      `moti_chats_${currentUser}`,
-      JSON.stringify(chatList)
-    );
-
-  }, [chatList]);
-
-  // ================= AUTO SCROLL =================
-
-  useEffect(() => {
-
-    endRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
-
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // ================= LOGIN =================
+  // ================= VOICE =================
+  const speak = (text) => {
 
-  const login = () => {
+    window.speechSynthesis.cancel();
 
-    if (!username || !password) {
-      alert("Enter username and password");
-      return;
-    }
-
-    localStorage.setItem("moti_login", "true");
-    localStorage.setItem(
-      "moti_current_user",
-      username
-    );
-
-    setLoggedIn(true);
-
-  };
-
-  // ================= LOGOUT =================
-
-  const logout = () => {
-
-    localStorage.removeItem("moti_login");
-
-    setLoggedIn(false);
-
-    setMessages([]);
-    setChatList([]);
-
-  };
-
-  // ================= NEW CHAT =================
-
-  const createNewChat = () => {
-
-    const newChat = {
-      id: Date.now(),
-      title: "New Chat",
-      messages: [],
-    };
-
-    const updated = [newChat, ...chatList];
-
-    setChatList(updated);
-
-    setCurrentChatId(newChat.id);
-
-    setMessages([]);
-
-  };
-
-  // ================= OPEN CHAT =================
-
-  const openChat = (chat) => {
-
-    setCurrentChatId(chat.id);
-
-    setMessages(chat.messages);
-
-  };
-
-  // ================= SAVE CURRENT CHAT =================
-
-  const updateCurrentChat = (newMessages) => {
-
-    const updated = chatList.map((chat) => {
-
-      if (chat.id === currentChatId) {
-
-        return {
-          ...chat,
-          title:
-            newMessages[0]?.text?.slice(0, 20) ||
-            "New Chat",
-          messages: newMessages,
-        };
-
-      }
-
-      return chat;
-
-    });
-
-    setChatList(updated);
-
-  };
-
-  // ================= SPEAK =================
-
-  const speak = async (text) => {
-
-  window.speechSynthesis.cancel();
-
-  const words = text.split(" ");
-
-  let current = "";
-
-  for (let i = 0; i < words.length; i++) {
-
-    current += words[i] + " ";
-
-    const utter = new SpeechSynthesisUtterance(words[i]);
+    const utter = new SpeechSynthesisUtterance(text);
 
     utter.rate = 1;
     utter.pitch = 1;
+    utter.volume = 1;
+
+    const voices = speechSynthesis.getVoices();
+
+    utter.voice =
+      voices.find(v => v.lang === "en-US") ||
+      voices.find(v => v.lang === "hi-IN") ||
+      voices[0];
 
     speechSynthesis.speak(utter);
-
-    await new Promise((r) => setTimeout(r, 120));
-
-  }
-
-};
-
-    // ================= SPEAK =================
-
-    speechSynthesis.speak(utter);
-
-  } catch (err) {
-
-    console.log(err);
-
-  }
-
-};
+  };
 
   // ================= SEND =================
-
-  const sendMessage = async (customText = null) => {
+  const send = async (customText) => {
 
     const text = customText || input;
-
     if (!text.trim()) return;
 
-    const userMsg = {
-      role: "user",
-      text,
-    };
-
-    const newMessages = [...messages, userMsg];
-
-    setMessages(newMessages);
-
-    updateCurrentChat(newMessages);
-
     setInput("");
+
+    setMessages(prev => [
+      ...prev,
+      { role: "user", text }
+    ]);
+
+    setLoading(true);
 
     try {
 
       const res = await fetch(`${API}/chat`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          message: text,
-        }),
+        body: JSON.stringify({ message: text })
       });
 
       const data = await res.json();
 
-      const reply =
-        data.reply || "Hello from MOTI AI";
+      setMessages(prev => [
+        ...prev,
+        { role: "ai", text: data.reply }
+      ]);
 
-      const botMsg = {
-        role: "assistant",
-        text: "",
-      };
-
-      setMessages((prev) => [...prev, botMsg]);
-
-      let current = "";
-
-      for (let i = 0; i < reply.length; i++) {
-
-        current += reply[i];
-
-        await new Promise((r) =>
-          setTimeout(r, 10)
-        );
-
-        setMessages((prev) => {
-
-          const copy = [...prev];
-
-          copy[copy.length - 1] = {
-            role: "assistant",
-            text: current,
-          };
-
-          return copy;
-
-        });
-
-      }
-
-      const finalMessages = [
-        ...newMessages,
-        {
-          role: "assistant",
-          text: reply,
-        },
-      ];
-
-      updateCurrentChat(finalMessages);
-
-      speak(reply);
+      speak(data.reply);
 
     } catch (err) {
 
-      console.log(err);
-
-      setMessages((prev) => [
+      setMessages(prev => [
         ...prev,
-        {
-          role: "assistant",
-          text: "Backend connection failed",
-        },
+        { role: "ai", text: "Backend error" }
       ]);
 
     }
 
+    setLoading(false);
   };
 
   // ================= MIC =================
+  const startMic = () => {
 
- const recognitionRef = useRef(null);
+    window.speechSynthesis.cancel();
 
-const startMic = () => {
+    const SpeechRecognition =
+      window.SpeechRecognition ||
+      window.webkitSpeechRecognition;
 
-  const SpeechRecognition =
-    window.SpeechRecognition ||
-    window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return alert("Mic not supported");
 
-  if (!SpeechRecognition) return;
+    const recognition = new SpeechRecognition();
 
-  // 🔴 STOP AI VOICE WHEN USER SPEAKS
-  window.speechSynthesis.cancel();
+    recognition.lang = "en-IN";
 
-  const recognition = new SpeechRecognition();
+    recognition.onresult = (e) => {
+      const text = e.results[0][0].transcript;
+      send(text);
+    };
 
-  recognition.lang = "en-US";
-  recognition.interimResults = false;
-  recognition.continuous = false;
-
-  recognition.onstart = () => {
-    console.log("Listening...");
+    recognition.start();
   };
-
-  recognition.onresult = (e) => {
-    const text = e.results[0][0].transcript;
-    sendMessage(text);
-  };
-
-  recognition.onend = () => {
-    console.log("Mic stopped");
-  };
-
-  recognitionRef.current = recognition;
-  recognition.start();
-};
-
-  // ================= LOGIN UI =================
-
-  if (!loggedIn) {
-
-    return (
-      <div
-        style={{
-          height: "100vh",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          background:
-            "linear-gradient(135deg,#0f172a,#1e1b4b)",
-          fontFamily: "Arial",
-        }}
-      >
-        <div
-          style={{
-            width: "320px",
-            padding: "30px",
-            borderRadius: "20px",
-            background: "rgba(255,255,255,0.1)",
-            backdropFilter: "blur(15px)",
-          }}
-        >
-          <h1
-            style={{
-              textAlign: "center",
-              color: "white",
-            }}
-          >
-            MOTI AI
-          </h1>
-
-          <input
-            placeholder="Username"
-            value={username}
-            onChange={(e) =>
-              setUsername(e.target.value)
-            }
-            style={{
-              width: "100%",
-              padding: "12px",
-              marginTop: "20px",
-              borderRadius: "10px",
-              border: "none",
-            }}
-          />
-
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) =>
-              setPassword(e.target.value)
-            }
-            style={{
-              width: "100%",
-              padding: "12px",
-              marginTop: "15px",
-              borderRadius: "10px",
-              border: "none",
-            }}
-          />
-
-          <button
-            onClick={login}
-            style={{
-              width: "100%",
-              marginTop: "20px",
-              padding: "12px",
-              border: "none",
-              borderRadius: "10px",
-              background:
-                "linear-gradient(90deg,#7c3aed,#2563eb)",
-              color: "white",
-              cursor: "pointer",
-              fontWeight: "bold",
-            }}
-          >
-            Login
-          </button>
-        </div>
-      </div>
-    );
-
-  }
-
-  // ================= MAIN UI =================
 
   return (
-    <div
-      style={{
-        display: "flex",
-        height: "100vh",
-        background: "#0f172a",
-        color: "white",
-        fontFamily: "Arial",
-      }}
-    >
 
-      {/* SIDEBAR */}
+    <div style={styles.container}>
 
-      <div
-        style={{
-          width: "260px",
-          background: "#111827",
-          padding: "15px",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-
-        <button
-          onClick={createNewChat}
-          style={{
-            padding: "12px",
-            border: "none",
-            borderRadius: "12px",
-            background:
-              "linear-gradient(90deg,#7c3aed,#2563eb)",
-            color: "white",
-            cursor: "pointer",
-            marginBottom: "15px",
-          }}
-        >
-          + New Chat
-        </button>
-
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-          }}
-        >
-          {chatList.map((chat) => (
-
-            <div
-              key={chat.id}
-              onClick={() => openChat(chat)}
-              style={{
-                padding: "12px",
-                borderRadius: "10px",
-                cursor: "pointer",
-                marginBottom: "10px",
-                background:
-                  chat.id === currentChatId
-                    ? "#1e293b"
-                    : "transparent",
-              }}
-            >
-              {chat.title}
-            </div>
-
-          ))}
-        </div>
-
-        <button
-          onClick={logout}
-          style={{
-            padding: "12px",
-            border: "none",
-            borderRadius: "10px",
-            background: "#dc2626",
-            color: "white",
-            cursor: "pointer",
-          }}
-        >
-          Logout
-        </button>
-
+      {/* HEADER */}
+      <div style={styles.header}>
+        MOTI AI
       </div>
 
       {/* CHAT */}
+      <div style={styles.chatBox}>
 
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-
-        {/* HEADER */}
-
-        <div
-          style={{
-            padding: "18px",
-            background: "#111827",
-            borderBottom: "1px solid #222",
-            fontSize: "22px",
-            fontWeight: "bold",
-          }}
-        >
-          MOTI AI ✨
-        </div>
-
-        {/* MESSAGES */}
-
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: "20px",
-          }}
-        >
-
-          {messages.map((msg, index) => (
-
-            <div
-              key={index}
-              style={{
-                display: "flex",
-                justifyContent:
-                  msg.role === "user"
-                    ? "flex-end"
-                    : "flex-start",
-                marginBottom: "15px",
-              }}
-            >
-
-              <div
-                style={{
-                  maxWidth: "75%",
-                  padding: "14px",
-                  borderRadius: "16px",
-                  background:
-                    msg.role === "user"
-                      ? "#2563eb"
-                      : "#1e293b",
-                }}
-              >
-                {msg.text}
-              </div>
-
-            </div>
-
-          ))}
-
-          <div ref={endRef}></div>
-
-        </div>
-
-        {/* INPUT */}
-
-        <div
-          style={{
-            display: "flex",
-            gap: "10px",
-            padding: "15px",
-            background: "#111827",
-          }}
-        >
-
-          <button
-            onClick={startMic}
+        {messages.map((m, i) => (
+          <div
+            key={i}
             style={{
-              width: "55px",
-              borderRadius: "14px",
-              border: "none",
-              background: "#7c3aed",
-              color: "white",
-              fontSize: "20px",
-              cursor: "pointer",
+              ...styles.msg,
+              alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+              background: m.role === "user" ? "#4f46e5" : "#222"
             }}
           >
-            🎤
-          </button>
+            {m.text}
+          </div>
+        ))}
 
-          <input
-            value={input}
-            onChange={(e) =>
-              setInput(e.target.value)
-            }
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                sendMessage();
-              }
-            }}
-            placeholder="Message MOTI..."
-            style={{
-              flex: 1,
-              padding: "14px",
-              borderRadius: "14px",
-              border: "none",
-              outline: "none",
-              background: "#1e293b",
-              color: "white",
-            }}
-          />
+        <div ref={endRef} />
 
-          <button
-            onClick={() => sendMessage()}
-            style={{
-              padding: "14px 20px",
-              border: "none",
-              borderRadius: "14px",
-              background: "#2563eb",
-              color: "white",
-              cursor: "pointer",
-            }}
-          >
-            Send
-          </button>
+      </div>
 
-        </div>
+      {/* INPUT */}
+      <div style={styles.inputBox}>
+
+        <button onClick={startMic} style={styles.btn}>
+          🎤
+        </button>
+
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          style={styles.input}
+          placeholder="Ask MOTI..."
+          onKeyDown={(e) => e.key === "Enter" && send()}
+        />
+
+        <button onClick={() => send()} style={styles.btn}>
+          ➤
+        </button>
 
       </div>
 
     </div>
   );
 }
+
+// ================= STYLES =================
+const styles = {
+
+  container: {
+    height: "100vh",
+    background: "#0f0f0f",
+    display: "flex",
+    flexDirection: "column",
+    color: "white"
+  },
+
+  header: {
+    padding: 15,
+    background: "#111",
+    fontWeight: "bold",
+    textAlign: "center"
+  },
+
+  chatBox: {
+    flex: 1,
+    padding: 10,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    overflowY: "auto"
+  },
+
+  msg: {
+    padding: 10,
+    borderRadius: 10,
+    maxWidth: "70%"
+  },
+
+  inputBox: {
+    display: "flex",
+    padding: 10,
+    background: "#111"
+  },
+
+  input: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 10,
+    border: "none",
+    outline: "none"
+  },
+
+  btn: {
+    margin: "0 5px",
+    padding: 10,
+    borderRadius: 10,
+    border: "none",
+    cursor: "pointer"
+  }
+};
