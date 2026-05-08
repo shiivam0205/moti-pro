@@ -178,20 +178,33 @@ useEffect(() => {
 
   const speak = (text) => {
 
-  try {
+  window.speechSynthesis.cancel();
 
-    window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
 
-    const utter =
-      new SpeechSynthesisUtterance(text);
+  utter.rate = 1;
+  utter.pitch = 1;
+  utter.volume = 1;
 
-    // ================= LANGUAGE DETECTION =================
+  const setVoice = () => {
 
-    const hindiRegex =
-      /[\u0900-\u097F]/;
+    const voices = speechSynthesis.getVoices();
 
-    const isHindi =
-      hindiRegex.test(text);
+    utter.voice =
+      voices.find(v => v.lang === "en-US") ||
+      voices.find(v => v.lang === "hi-IN") ||
+      voices[0];
+
+    speechSynthesis.speak(utter);
+  };
+
+  // voices sometimes load late → fix delay
+  if (speechSynthesis.getVoices().length === 0) {
+    speechSynthesis.onvoiceschanged = setVoice;
+  } else {
+    setVoice();
+  }
+};
 
     // ================= LANGUAGE =================
 
@@ -360,34 +373,39 @@ useEffect(() => {
 
   // ================= MIC =================
 
-  const startMic = () => {
+ const startMic = () => {
 
-    const SpeechRecognition =
-      window.SpeechRecognition ||
-      window.webkitSpeechRecognition;
+  // STOP AI SPEAKING
+  speechSynthesis.cancel();
 
-    if (!SpeechRecognition) {
-      alert("Mic not supported");
-      return;
-    }
+  const SpeechRecognition =
+    window.SpeechRecognition ||
+    window.webkitSpeechRecognition;
 
-    const recognition =
-      new SpeechRecognition();
+  if (!SpeechRecognition) {
+    alert("Mic not supported");
+    return;
+  }
 
-    recognition.lang = "en-US";
+  const recognition =
+    new SpeechRecognition();
 
-    recognition.onresult = (e) => {
+  recognition.lang = "hi-IN";
+  recognition.continuous = false;
+  recognition.interimResults = false;
 
-      const text =
-        e.results[0][0].transcript;
+  recognition.onresult = (e) => {
 
-      sendMessage(text);
+    const text =
+      e.results[0][0].transcript;
 
-    };
-
-    recognition.start();
+    sendMessage(text);
 
   };
+
+  recognition.start();
+
+};
 
   // ================= LOGIN UI =================
 
