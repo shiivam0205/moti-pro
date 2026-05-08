@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 
-const API = "https://moti-pro07.onrender.com";
+const API = "https://moti-proo.onrender.com";
 
 export default function App() {
 
