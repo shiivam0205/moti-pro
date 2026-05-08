@@ -11,7 +11,8 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 @app.route("/")
 def home():
     return jsonify({
-        "status": "online"
+        "status": "online",
+        "brain": "active"
     })
 
 @app.route("/chat", methods=["POST"])
@@ -21,11 +22,16 @@ def chat():
 
         data = request.get_json()
 
-        message = data.get("message", "")
+        user_message = data.get("message", "")
 
-        if message == "":
+        if not user_message:
             return jsonify({
                 "reply": "Please type something."
+            })
+
+        if not GROQ_API_KEY:
+            return jsonify({
+                "reply": "Missing GROQ API KEY in Render environment."
             })
 
         headers = {
@@ -38,20 +44,35 @@ def chat():
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are MOTI AI. Reply naturally like ChatGPT."
+                    "content": (
+                        "You are MOTI AI, a futuristic AI assistant "
+                        "that replies naturally and intelligently."
+                    )
                 },
                 {
                     "role": "user",
-                    "content": message
+                    "content": user_message
                 }
-            ]
+            ],
+            "temperature": 0.7,
+            "max_tokens": 1024
         }
 
         response = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers=headers,
-            json=payload
+            json=payload,
+            timeout=60
         )
+
+        print("STATUS:", response.status_code)
+        print("TEXT:", response.text)
+
+        if response.status_code != 200:
+
+            return jsonify({
+                "reply": f"Groq API Error: {response.text}"
+            })
 
         result = response.json()
 
@@ -63,10 +84,10 @@ def chat():
 
     except Exception as e:
 
-        print(e)
+        print("SERVER ERROR:", str(e))
 
         return jsonify({
-            "reply": "AI brain error."
+            "reply": f"AI brain error: {str(e)}"
         })
 
 if __name__ == "__main__":
