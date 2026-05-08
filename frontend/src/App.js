@@ -32,7 +32,21 @@ export default function App() {
 const endRef = useRef(null);
 
 useEffect(() => {
-  speechSynthesis.getVoices();
+
+  const stopIfUserSpeaks = () => {
+    window.speechSynthesis.cancel();
+  };
+
+  window.addEventListener("keydown", stopIfUserSpeaks);
+  window.addEventListener("mousedown", stopIfUserSpeaks);
+  window.addEventListener("touchstart", stopIfUserSpeaks);
+
+  return () => {
+    window.removeEventListener("keydown", stopIfUserSpeaks);
+    window.removeEventListener("mousedown", stopIfUserSpeaks);
+    window.removeEventListener("touchstart", stopIfUserSpeaks);
+  };
+
 }, []);
 
   // ================= LOAD USER CHATS =================
@@ -176,90 +190,30 @@ useEffect(() => {
 
   // ================= SPEAK =================
 
-  const speak = (text) => {
+  const speak = async (text) => {
 
   window.speechSynthesis.cancel();
 
-  const utter = new SpeechSynthesisUtterance(text);
+  const words = text.split(" ");
 
-  utter.rate = 1;
-  utter.pitch = 1;
-  utter.volume = 1;
+  let current = "";
 
-  const setVoice = () => {
+  for (let i = 0; i < words.length; i++) {
 
-    const voices = speechSynthesis.getVoices();
+    current += words[i] + " ";
 
-    utter.voice =
-      voices.find(v => v.lang === "en-US") ||
-      voices.find(v => v.lang === "hi-IN") ||
-      voices[0];
+    const utter = new SpeechSynthesisUtterance(words[i]);
+
+    utter.rate = 1;
+    utter.pitch = 1;
 
     speechSynthesis.speak(utter);
-  };
 
-  // voices sometimes load late → fix delay
-  if (speechSynthesis.getVoices().length === 0) {
-    speechSynthesis.onvoiceschanged = setVoice;
-  } else {
-    setVoice();
+    await new Promise((r) => setTimeout(r, 120));
+
   }
+
 };
-
-    // ================= LANGUAGE =================
-
-    utter.lang = isHindi
-      ? "hi-IN"
-      : "en-US";
-
-    // ================= HUMAN SETTINGS =================
-
-    utter.rate = 0.95;
-    utter.pitch = 1;
-    utter.volume = 1;
-
-    // ================= BEST VOICE =================
-
-    const voices =
-      speechSynthesis.getVoices();
-
-    let selectedVoice = null;
-
-    if (isHindi) {
-
-      selectedVoice =
-        voices.find(v =>
-          v.lang === "hi-IN"
-        ) ||
-
-        voices.find(v =>
-          v.lang.includes("hi")
-        ) ||
-
-        voices.find(v =>
-          v.name.toLowerCase().includes("india")
-        );
-
-    } else {
-
-      selectedVoice =
-        voices.find(v =>
-          v.name.includes("Google US English")
-        ) ||
-
-        voices.find(v =>
-          v.name.includes("Microsoft Aria")
-        ) ||
-
-        voices.find(v =>
-          v.lang === "en-US"
-        );
-
-    }
-
-    if (selectedVoice) {
-      utter.voice = selectedVoice;
-    }
 
     // ================= SPEAK =================
 
@@ -373,38 +327,40 @@ useEffect(() => {
 
   // ================= MIC =================
 
- const startMic = () => {
+ const recognitionRef = useRef(null);
 
-  // STOP AI SPEAKING
-  speechSynthesis.cancel();
+const startMic = () => {
 
   const SpeechRecognition =
     window.SpeechRecognition ||
     window.webkitSpeechRecognition;
 
-  if (!SpeechRecognition) {
-    alert("Mic not supported");
-    return;
-  }
+  if (!SpeechRecognition) return;
 
-  const recognition =
-    new SpeechRecognition();
+  // 🔴 STOP AI VOICE WHEN USER SPEAKS
+  window.speechSynthesis.cancel();
 
-  recognition.lang = "hi-IN";
-  recognition.continuous = false;
+  const recognition = new SpeechRecognition();
+
+  recognition.lang = "en-US";
   recognition.interimResults = false;
+  recognition.continuous = false;
 
-  recognition.onresult = (e) => {
-
-    const text =
-      e.results[0][0].transcript;
-
-    sendMessage(text);
-
+  recognition.onstart = () => {
+    console.log("Listening...");
   };
 
-  recognition.start();
+  recognition.onresult = (e) => {
+    const text = e.results[0][0].transcript;
+    sendMessage(text);
+  };
 
+  recognition.onend = () => {
+    console.log("Mic stopped");
+  };
+
+  recognitionRef.current = recognition;
+  recognition.start();
 };
 
   // ================= LOGIN UI =================
