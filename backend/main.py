@@ -1,61 +1,76 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import random
+import requests
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-responses = [
-    "I understand what you mean.",
-    "That sounds interesting.",
-    "Tell me more about it.",
-    "I am thinking about your message.",
-    "That is actually a smart point.",
-    "I can help you with that.",
-    "Interesting question.",
-    "I am MOTI AI and I am online."
-]
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 @app.route("/")
 def home():
     return jsonify({
-        "status": "online"
+        "status": "online",
+        "brain": "active"
     })
 
 @app.route("/chat", methods=["POST"])
 def chat():
 
-    data = request.get_json()
+    try:
 
-    message = data.get("message", "")
+        data = request.get_json()
 
-    if not message:
+        user_message = data.get("message", "")
+
+        if not user_message:
+            return jsonify({
+                "reply": "Please say something."
+            })
+
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": "llama3-70b-8192",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are MOTI AI, a smart futuristic assistant."
+                },
+                {
+                    "role": "user",
+                    "content": user_message
+                }
+            ],
+            "temperature": 0.7,
+            "max_tokens": 1024
+        }
+
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers,
+            json=payload
+        )
+
+        result = response.json()
+
+        reply = result["choices"][0]["message"]["content"]
+
         return jsonify({
-            "reply": "Please say something."
+            "reply": reply
         })
 
-    # basic smart replies
+    except Exception as e:
 
-    lower = message.lower()
+        print(e)
 
-    if "hello" in lower or "hi" in lower:
-        reply = "Hello! How can I help you today?"
-
-    elif "your name" in lower:
-        reply = "My name is MOTI AI."
-
-    elif "how are you" in lower:
-        reply = "I am doing great."
-
-    elif "weather" in lower:
-        reply = "I can help with weather once APIs are connected."
-
-    else:
-        reply = random.choice(responses)
-
-    return jsonify({
-        "reply": reply
-    })
+        return jsonify({
+            "reply": "AI brain error."
+        })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
