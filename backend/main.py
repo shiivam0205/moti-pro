@@ -11,8 +11,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 @app.route("/")
 def home():
     return jsonify({
-        "status": "online",
-        "brain": "active"
+        "status": "online"
     })
 
 @app.route("/chat", methods=["POST"])
@@ -22,11 +21,11 @@ def chat():
 
         data = request.get_json()
 
-        user_message = data.get("message", "")
+        message = data.get("message", "")
 
-        if not user_message:
+        if message == "":
             return jsonify({
-                "reply": "Please say something."
+                "reply": "Please type something."
             })
 
         headers = {
@@ -39,15 +38,13 @@ def chat():
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are MOTI AI, a smart futuristic assistant."
+                    "content": "You are MOTI AI. Reply naturally like ChatGPT."
                 },
                 {
                     "role": "user",
-                    "content": user_message
+                    "content": message
                 }
-            ],
-            "temperature": 0.7,
-            "max_tokens": 1024
+            ]
         }
 
         response = requests.post(
